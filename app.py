@@ -1,4 +1,4 @@
-"""Prescription form. Each entry is saved to SQLite and the Excel sheet."""
+"""Prescription form. Each entry is saved to the database. Excel is written on export."""
 
 from datetime import datetime
 from pathlib import Path
@@ -10,10 +10,9 @@ import store
 
 st.set_page_config(page_title="Magnus card printer", layout="wide")
 st.title("New prescription")
-st.caption("Fill in the card details. Save writes the row to the database and the Excel sheet.")
+st.caption("Fill in the card details. Save stores the row in the database. Export writes the Excel file.")
 
 with st.form("prescription", clear_on_submit=True):
-    sheet = st.text_input("Excel file", str(print_cards.DEFAULT_SHEET))
     top_left, top_mid, top_right = st.columns(3)
     entry_date = top_left.date_input("Date", datetime.now().date())
     wsl_id = top_mid.text_input("WSL ID", placeholder="J4429")
@@ -62,34 +61,32 @@ if submitted:
             "le_add": left_add.strip(),
         }
         try:
-            record_id = store.save_entry(entry, Path(sheet))
+            record_id = store.save_entry(entry)
         except Exception as error:
             st.error(f"Could not save: {error}")
         else:
-            st.success(f"Saved {patient_name.strip()} as record {record_id} in the database and in {Path(sheet).name}.")
+            ref = f" ({wsl_id.strip()})" if wsl_id.strip() else ""
+            st.success(f"Saved {patient_name.strip()}{ref} in the database. Record {record_id}.")
 
 st.subheader("Saved entries")
-rows = store.list_entries()
-if rows:
-    st.dataframe(
-        [
-            {
-                "ID": row["id"],
-                "Date": row["entry_date"],
-                "WSL ID": row["wsl_id"],
-                "Patient": row["patient_name"],
-                "Lens": row["lens"],
-                "RE": " / ".join(part for part in (row["re_sph"], row["re_cyl"], row["re_axis"], row["re_add"]) if part),
-                "LE": " / ".join(part for part in (row["le_sph"], row["le_cyl"], row["le_axis"], row["le_add"]) if part),
-                "Optician": row["optician_name"],
-            }
-            for row in rows
-        ],
-        hide_index=True,
-        use_container_width=True,
-    )
+saved = store.list_entries()
+if saved:
+    st.table(store.entries_preview(saved))
 else:
     st.write("No entries saved yet.")
+
+def _write_export() -> None:
+    store.export_sheet(Path(st.session_state["export_sheet_path"]))
+
+sheet = st.text_input("Excel file", str(print_cards.DEFAULT_SHEET), key="export_sheet_path")
+st.download_button(
+    "Export Excel",
+    data=store.workbook_bytes(),
+    file_name=Path(sheet).name or "prescriptions.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    on_click=_write_export,
+    type="primary",
+)
 
 with st.expander("Printer connection", expanded=True):
     st.write(

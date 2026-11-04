@@ -1,57 +1,15 @@
-"""Save a prescription to SQLite and to the Excel sheet."""
+"""Save a prescription to SQLite. The Excel sheet is written only on export."""
 
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 
 import print_cards
 
 DB_PATH = print_cards.ROOT / "prescriptions.db"
-
-# Excel header text -> value stored on the entry.
-HEADER_FIELDS = {
-    "timestamp": "timestamp",
-    "date": "timestamp",
-    "date / order line": "timestamp",
-    "date/order line": "timestamp",
-    "order line": "timestamp",
-    "wsl id": "wsl_id",
-    "ref no": "wsl_id",
-    "ref no.": "wsl_id",
-    "ref": "wsl_id",
-    "patient name": "patient_name",
-    "name": "patient_name",
-    "lens": "lens",
-    "optician name": "optician_name",
-    "retailer": "optician_name",
-    "retailer name": "optician_name",
-    "re sph": "re_sph",
-    "r sph": "re_sph",
-    "right sph": "re_sph",
-    "re cyl": "re_cyl",
-    "r cyl": "re_cyl",
-    "right cyl": "re_cyl",
-    "re axis": "re_axis",
-    "r axis": "re_axis",
-    "right axis": "re_axis",
-    "re add": "re_add",
-    "r add": "re_add",
-    "right add": "re_add",
-    "le sph": "le_sph",
-    "l sph": "le_sph",
-    "left sph": "le_sph",
-    "le cyl": "le_cyl",
-    "l cyl": "le_cyl",
-    "left cyl": "le_cyl",
-    "le axis": "le_axis",
-    "l axis": "le_axis",
-    "left axis": "le_axis",
-    "le add": "le_add",
-    "l add": "le_add",
-    "left add": "le_add",
-}
 
 
 def connect() -> sqlite3.Connection:
@@ -83,61 +41,215 @@ def connect() -> sqlite3.Connection:
     return connection
 
 
-def list_entries(limit: int = 20) -> list[dict]:
+def list_entries(limit: int | None = None, *, newest_first: bool = True) -> list[dict]:
+    order = "DESC" if newest_first else "ASC"
+    query = f"SELECT * FROM prescriptions ORDER BY entry_date {order}, id {order}"
+    parameters: tuple = ()
+    if limit is not None:
+        query += " LIMIT ?"
+        parameters = (limit,)
     with connect() as connection:
-        rows = connection.execute(
-            "SELECT * FROM prescriptions ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
     return [dict(row) for row in rows]
 
 
-def _excel_cell(value: str, field: str):
-    text = (value or "").strip()
-    if field == "timestamp":
-        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+# Card Filling Form column order. This is the sheet the shop opens and downloads.
+SHEET_COLUMNS = (
+    ("Ref No", "wsl_id", "text"),
+    ("Date", "timestamp", "date"),
+    ("Patient Name", "patient_name", "text"),
+    ("Lens", "lens", "text"),
+    ("RE Sph", "re_sph", "power"),
+    ("RE Cyl", "re_cyl", "power"),
+    ("RE Axis", "re_axis", "axis"),
+    ("RE Add", "re_add", "power"),
+    ("LE Sph", "le_sph", "power"),
+    ("LE Cyl", "le_cyl", "power"),
+    ("LE Axis", "le_axis", "axis"),
+    ("LE Add", "le_add", "power"),
+    ("Retailer", "optician_name", "text"),
+)
+
+_COLUMN_WIDTHS = {
+    "Ref No": 14,
+    "Date": 20,
+    "Patient Name": 24,
+    "Lens": 22,
+    "Retailer": 22,
+}
+
+
+def _as_datetime(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        number = float(value)
+        if number > 20000:
+            return datetime(1899, 12, 30) + timedelta(days=number)
+        return None
+    text = str(value).strip()
     if not text:
         return None
-    if field in {"patient_name", "lens", "optician_name", "wsl_id"}:
-        return text
-    try:
-        number = float(text)
-    except ValueError:
-        return text
-    if number.is_integer():
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d-%m-%y", "%d/%m/%y"):
+        sample = text if " " in pattern else text.split()[0]
+        try:
+            return datetime.strptime(sample, pattern)
+        except ValueError:
+            continue
+    return None
+
+
+def _as_number(value, whole: bool = False):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            return text
+    if whole:
+        return int(round(number))
+    if isinstance(number, float) and number.is_integer():
         return int(number)
     return number
 
 
-def append_excel(sheet_path: Path, entry: dict) -> None:
+def _cell_value(value, kind: str):
+    if kind == "date":
+        return _as_datetime(value)
+    if kind == "power":
+        return _as_number(value)
+    if kind == "axis":
+        return _as_number(value, whole=True)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _present(value, kind: str) -> str:
+    coerced = _cell_value(value, kind)
+    if coerced is None:
+        return ""
+    if kind == "date" and isinstance(coerced, datetime):
+        if coerced.hour == coerced.minute == coerced.second == 0:
+            return coerced.strftime("%d-%m-%Y")
+        return coerced.strftime("%d-%m-%Y %H:%M")
+    if kind == "power" and isinstance(coerced, (int, float)):
+        return f"{float(coerced):.2f}"
+    return str(coerced)
+
+
+def _render_workbook(entries: list[dict]) -> bytes:
+    """Build the card-form workbook in memory."""
     import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
-    workbook = openpyxl.load_workbook(sheet_path)
+    workbook = openpyxl.Workbook()
     worksheet = workbook.active
-    headers = [cell.value for cell in worksheet[1]]
-    names = [str(header).strip().lower() if header else "" for header in headers]
-    if "lens" not in names:
-        worksheet.cell(1, len(headers) + 1, "Lens")
-        headers.append("Lens")
-        names.append("lens")
-    row = []
-    for name in names:
-        field = HEADER_FIELDS.get(name)
-        if field is None:
-            row.append(None)
-            continue
-        row.append(_excel_cell(entry.get(field, ""), field))
-    worksheet.append(row)
-    workbook.save(sheet_path)
+    worksheet.title = "Prescriptions"
+
+    header_fill = PatternFill("solid", fgColor="12482E")
+    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=12)
+    body_font = Font(name="Calibri", size=11)
+    thin = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9"),
+    )
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+
+    for column, (header, _field, _kind) in enumerate(SHEET_COLUMNS, start=1):
+        cell = worksheet.cell(1, column, header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        cell.border = thin
+
+    for row_index, entry in enumerate(entries, start=2):
+        for column, (_header, field, kind) in enumerate(SHEET_COLUMNS, start=1):
+            value = _cell_value(entry.get(field), kind)
+            cell = worksheet.cell(row_index, column, value)
+            cell.font = body_font
+            cell.border = thin
+            cell.alignment = left if kind == "text" and field != "wsl_id" else center
+            if kind == "date" and isinstance(value, datetime):
+                cell.number_format = "DD-MM-YYYY" if value.hour == value.minute == value.second == 0 else "DD-MM-YYYY HH:MM"
+            elif kind == "power" and isinstance(value, (int, float)):
+                cell.number_format = "0.00"
+            elif kind == "axis" and isinstance(value, (int, float)):
+                cell.number_format = "0"
+
+    worksheet.auto_filter.ref = f"A1:{get_column_letter(len(SHEET_COLUMNS))}{max(1, len(entries) + 1)}"
+    worksheet.freeze_panes = "A2"
+    worksheet.row_dimensions[1].height = 22
+    worksheet.page_setup.orientation = "landscape"
+    worksheet.page_setup.fitToPage = True
+    worksheet.page_setup.fitToWidth = 1
+    worksheet.page_setup.fitToHeight = 0
+    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+    worksheet.oddHeader.left.text = "Magnus warranty cards"
+    for column, (header, _field, _kind) in enumerate(SHEET_COLUMNS, start=1):
+        worksheet.column_dimensions[get_column_letter(column)].width = _COLUMN_WIDTHS.get(header, 12)
+
+    buffer = BytesIO()
+    workbook.save(buffer)
     workbook.close()
+    return buffer.getvalue()
 
 
-def save_entry(entry: dict, sheet_path: Path) -> int:
-    """Write one prescription to the workbook, then to the database."""
+def _sheet_entries(entries: list[dict] | None = None) -> list[dict]:
+    """Database rows in sheet order, with the card date filled in."""
+    source = list_entries(newest_first=False) if entries is None else entries
+    prepared = []
+    for entry in source:
+        row = dict(entry)
+        row["timestamp"] = row.get("timestamp") or row.get("entry_date") or ""
+        prepared.append(row)
+    return prepared
+
+
+def entries_preview(entries: list[dict]) -> list[dict]:
+    """Saved rows using the same headings as the exported sheet."""
+    preview = []
+    for entry in _sheet_entries(entries):
+        preview.append(
+            {
+                header: _present(entry.get(field), kind)
+                for header, field, kind in SHEET_COLUMNS
+            }
+        )
+    return preview
+
+
+def workbook_bytes(entries: list[dict] | None = None) -> bytes:
+    """Formatted workbook from the database. This does not write a file."""
+    return _render_workbook(_sheet_entries(entries))
+
+
+def export_sheet(sheet_path: Path, entries: list[dict] | None = None) -> int:
+    """Write the formatted Excel file from the database. Called only on export."""
+    prepared = _sheet_entries(entries)
     sheet_path = Path(sheet_path)
-    if not sheet_path.is_file():
-        raise FileNotFoundError(f"Excel file not found: {sheet_path}")
-    append_excel(sheet_path, entry)
+    sheet_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet_path.write_bytes(_render_workbook(prepared))
+    return len(prepared)
+
+
+def save_entry(entry: dict) -> int:
+    """Store one prescription in the database. The Excel file is written on export."""
     with connect() as connection:
         cursor = connection.execute(
             """
@@ -163,7 +275,7 @@ def save_entry(entry: dict, sheet_path: Path) -> int:
                 entry["le_axis"],
                 entry["le_add"],
                 entry["optician_name"],
-                str(sheet_path),
+                "",
             ),
         )
         return int(cursor.lastrowid)
