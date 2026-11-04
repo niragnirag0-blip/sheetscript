@@ -183,35 +183,36 @@ if flash:
     st.success(flash)
 
 form_epoch = st.session_state.setdefault("form_epoch", 0)
-with st.form(f"prescription-{form_epoch}", clear_on_submit=False):
-    st.markdown(
-        """
-        <div class="card-top">
-            <div>
-                <p class="eyebrow">Warranty card</p>
-                <h1>New prescription</h1>
+with st.expander("New prescription", expanded=False):
+    with st.form(f"prescription-{form_epoch}", clear_on_submit=False):
+        st.markdown(
+            """
+            <div class="card-top">
+                <div>
+                    <p class="eyebrow">Warranty card</p>
+                    <h1>New prescription</h1>
+                </div>
+                <div class="ribbon" aria-hidden="true">
+                    <small>MAGNUS</small>
+                    <strong>LENS</strong>
+                </div>
             </div>
-            <div class="ribbon" aria-hidden="true">
-                <small>MAGNUS</small>
-                <strong>LENS</strong>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    date_col, name_col, lens_col = st.columns(3)
-    entry_date = date_col.date_input("Date", datetime.now().date())
-    patient_name = name_col.text_input("Name", placeholder="Keshav Gupta")
-    lens = lens_col.text_input("Lens", placeholder="MAGNUS BR 1.67")
+            """,
+            unsafe_allow_html=True,
+        )
+        date_col, name_col, lens_col = st.columns(3)
+        entry_date = date_col.date_input("Date", datetime.now().date())
+        patient_name = name_col.text_input("Name", placeholder="Keshav Gupta")
+        lens = lens_col.text_input("Lens", placeholder="MAGNUS BR 1.67")
 
-    _power_headers()
-    right_sph, right_cyl, right_axis, right_add = _eye_row("R", ("-10.00", "-1.00", "150", "1.50"))
-    left_sph, left_cyl, left_axis, left_add = _eye_row("L", ("-11.00", "-1.00", "140", "1.50"))
+        _power_headers()
+        right_sph, right_cyl, right_axis, right_add = _eye_row("R", ("-10.00", "-1.00", "150", "1.50"))
+        left_sph, left_cyl, left_axis, left_add = _eye_row("L", ("-11.00", "-1.00", "140", "1.50"))
 
-    retailer_col, ref_col = st.columns(2)
-    optician_name = retailer_col.text_input("Retailer", placeholder="Space Optics")
-    wsl_id = ref_col.text_input("Ref No", placeholder="J4429")
-    submitted = st.form_submit_button("Save card", type="primary", use_container_width=True)
+        retailer_col, ref_col = st.columns(2)
+        optician_name = retailer_col.text_input("Retailer", placeholder="Space Optics")
+        wsl_id = ref_col.text_input("Ref No", placeholder="J4429")
+        submitted = st.form_submit_button("Save card", type="primary", use_container_width=True)
 
 def _form_payload() -> dict:
     return {
