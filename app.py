@@ -97,8 +97,10 @@ with st.expander("Printer connection", expanded=True):
         "The server cannot see a USB cable plugged into another computer. "
         "It can check a Zebra only when that printer has a network address the server can reach."
     )
-    printer_ip = st.text_input("Zebra IP address", placeholder="192.168.1.50")
-    if st.button("Check printer"):
+    with st.form("printer_check"):
+        printer_ip = st.text_input("Zebra IP address", placeholder="192.168.1.50")
+        check_printer = st.form_submit_button("Check printer")
+    if check_printer:
         result = print_cards.check_printer_host(printer_ip)
         if not result["host"]:
             st.warning("Enter the printer IP address first.")
