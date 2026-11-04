@@ -562,6 +562,27 @@ def usb_devices() -> list[dict]:
     return devices
 
 
+def check_printer_host(host: str, ports: tuple[int, ...] = (9100, 80, 443), timeout: float = 1.5) -> dict:
+    """See if a Zebra on the network answers. A cloud server can only reach an address it can route to."""
+    import socket
+
+    address = (host or "").strip()
+    if not address:
+        return {"host": "", "open_ports": [], "reachable": False}
+    open_ports = []
+    for port in ports:
+        probe = socket.socket()
+        probe.settimeout(timeout)
+        try:
+            probe.connect((address, port))
+            open_ports.append(port)
+        except OSError:
+            continue
+        finally:
+            probe.close()
+    return {"host": address, "open_ports": open_ports, "reachable": bool(open_ports)}
+
+
 def check_machine() -> dict:
     """See whether a Zebra ZC300 is plugged in or installed as a printer."""
     devices = usb_devices()

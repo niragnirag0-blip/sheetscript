@@ -91,12 +91,26 @@ if rows:
 else:
     st.write("No entries saved yet.")
 
-with st.expander("Printer connection"):
+with st.expander("Printer connection", expanded=True):
+    st.write(
+        "The form works from the server, so the shop computer does not need Python installed. "
+        "The server cannot see a USB cable plugged into another computer. "
+        "It can check a Zebra only when that printer has a network address the server can reach."
+    )
+    printer_ip = st.text_input("Zebra IP address", placeholder="192.168.1.50")
+    if st.button("Check printer"):
+        result = print_cards.check_printer_host(printer_ip)
+        if not result["host"]:
+            st.warning("Enter the printer IP address first.")
+        elif result["reachable"]:
+            ports = ", ".join(str(port) for port in result["open_ports"])
+            st.success(f"{result['host']} is connected. Open port: {ports}.")
+        else:
+            st.error(f"{result['host']} is not reachable from this server.")
+
     status = print_cards.check_machine()
     if status["connected"]:
         where = status["zebra_printer"] or status["zebra_usb"][0]["name"]
-        st.success(f"Zebra connected: {where}")
+        st.success(f"USB on this server: {where}")
     else:
-        st.error("Zebra ZC300 is not connected to this computer.")
-    if st.button("Check machine"):
-        st.rerun()
+        st.caption("No Zebra is plugged into the server itself by USB.")
