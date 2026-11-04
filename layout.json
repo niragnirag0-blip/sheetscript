@@ -1,0 +1,23 @@
+{
+  "card_width": 1006,
+  "card_height": 640,
+  "borders": true,
+  "topX": 240,
+  "topY": 90,
+  "topGap": 47,
+  "topSize": 38,
+  "tableX": 92,
+  "tableY": 263,
+  "labelW": 154,
+  "colW": 188,
+  "headerH": 64,
+  "rowH": 60,
+  "gridSize": 36,
+  "botX": 264,
+  "botY": 483,
+  "botGap": 48,
+  "botSize": 37,
+  "print_scale": 1,
+  "shift_x": 0,
+  "shift_y": 0
+}

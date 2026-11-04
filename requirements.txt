@@ -1,0 +1,4 @@
+openpyxl>=3.1
+pillow>=10.0
+qrcode>=7.4
+streamlit>=1.40
