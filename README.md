@@ -51,15 +51,9 @@ export MAGNUS_ADMIN_PASSWORD=change-me-please
 .venv/bin/streamlit run app.py
 ```
 
-Open http://127.0.0.1:8501. No extra sign-in is required. **Save card** writes the database. **Export Excel** builds the workbook only when clicked. **Print** creates a job for the shop PC.
+Open http://127.0.0.1:8501. No extra sign-in is required. **Save card** writes `data/magnus.db`. **Export Excel** builds the workbook only when clicked. **Print** creates a job for the shop PC.
 
-On Streamlit Cloud, set the secret and reboot the app:
-
-```toml
-DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST:5432/magnus"
-```
-
-Until that secret exists, the public page still opens and explains that cards are not being stored on the Streamlit disk.
+The page uses that SQLite file even when a PostgreSQL address is present.
 
 The Windows agent is the process that needs the API:
 

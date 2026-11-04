@@ -85,45 +85,24 @@ def test_sheet_import_adds_rows_and_skips_duplicates(tmp_path, monkeypatch):
     assert total == 1
 
 
-def test_unreachable_database_keeps_the_page_open(monkeypatch):
-    from sqlalchemy.exc import OperationalError
-
-    monkeypatch.setenv("DATABASE_URL", "postgres://magnus:secret@127.0.0.1:1/magnus")
-    monkeypatch.setenv("MAGNUS_ENV", "development")
-
-    def fail(_url):
-        raise OperationalError("connect", {}, OSError("connection refused"))
-
-    monkeypatch.setattr(app_data, "make_engine", fail)
+def test_postgres_address_is_ignored_for_the_sqlite_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://magnus:secret@db.jjwqtgshgndbjlksqpmu.supabase.co:5432/postgres")
+    monkeypatch.setenv("MAGNUS_ENV", "production")
+    monkeypatch.setattr(app_data, "_sqlite_database_url", lambda: f"sqlite:///{tmp_path}/magnus.db")
     app_data.reset()
+    saved = app_data.save_prescription({"patient_name": "Keshav Gupta", "date": "2026-11-02"})
     state = app_data.status()
     app_data.reset()
-    assert state["ready"] is False
-    assert "public website" in state["detail"]
-    assert "magnus:secret" not in state["detail"]
+    assert saved["patient_name"] == "Keshav Gupta"
+    assert state["ready"] is True
+    assert (tmp_path / "magnus.db").is_file()
 
 
-def test_streamlit_cloud_rejects_a_localhost_database(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql://magnus:secret@localhost:5432/magnus")
-    monkeypatch.setenv("MAGNUS_ENV", "development")
-    monkeypatch.setattr(app_data, "on_streamlit_cloud", lambda: True)
-    app_data.reset()
-    state = app_data.status()
-    app_data.reset()
-    assert state["ready"] is False
-    assert "this computer" in state["detail"]
-    assert "magnus:secret" not in state["detail"]
-
-
-def test_streamlit_cloud_does_not_write_a_local_database(tmp_path, monkeypatch):
+def test_streamlit_cloud_uses_sqlite(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/cloud.db")
     monkeypatch.setattr(app_data, "on_streamlit_cloud", lambda: True)
     app_data.reset()
-    try:
-        app_data.save_prescription({"patient_name": "Keshav Gupta", "date": "2026-11-02"})
-    except app_data.DatabaseNotConfigured as error:
-        assert "PostgreSQL" in str(error)
-    else:
-        raise AssertionError("The public app saved onto the Streamlit disk")
+    saved = app_data.save_prescription({"patient_name": "Keshav Gupta", "date": "2026-11-02"})
     app_data.reset()
-    assert not (tmp_path / "cloud.db").exists()
+    assert saved["patient_name"] == "Keshav Gupta"
+    assert (tmp_path / "cloud.db").is_file()

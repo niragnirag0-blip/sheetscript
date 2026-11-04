@@ -17,13 +17,7 @@ The container runs `alembic upgrade head` before uvicorn. Production refuses to 
 
 Put the API behind HTTPS. `deployment/cloud/nginx.conf` is a proxy example. Point it at the API and supply a real certificate. The shop agent and the Streamlit app must use that `https://` URL.
 
-Streamlit Cloud keeps using the same `app.py`. In the app secrets, set:
-
-```toml
-DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST:5432/magnus"
-```
-
-Reboot the app after saving the secret. The page opens without a second login. Cards are stored in PostgreSQL. The public sharing setting is separate: the app must be saved as public or visitors only see the Streamlit login spinner.
+Streamlit Cloud keeps using the same `app.py`. Cards are stored in the SQLite file `data/magnus.db`. The public sharing setting is separate: the app must be saved as public or visitors only see the Streamlit login spinner.
 
 The Windows agent uses `MAGNUS_API_URL=https://api.example.com`. That address is the FastAPI process, not the Streamlit page.
 

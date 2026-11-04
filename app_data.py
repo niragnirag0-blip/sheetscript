@@ -6,7 +6,6 @@ import os
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlparse
 
 import store
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,38 +32,26 @@ def reset() -> None:
     _status["detail"] = ""
 
 
-def _normalize_database_url(url: str) -> str:
-    value = url.strip()
-    if value.startswith("postgres://"):
-        return "postgresql+psycopg://" + value[len("postgres://") :]
-    if value.startswith("postgresql://"):
-        return "postgresql+psycopg://" + value[len("postgresql://") :]
-    return value
-
-
-def _database_host(url: str) -> str:
-    return (urlparse(url).hostname or "").lower()
-
-
 def _connection_message(url: str, error: BaseException) -> str:
-    host = _database_host(url)
+    if url.startswith("sqlite"):
+        return "The page is open, but the SQLite database could not be opened."
     text = str(error).lower()
-    if host in {"localhost", "127.0.0.1", "::1", "db"} or "connection refused" in text:
-        return (
-            "The database address is on this computer, so the public website cannot open it. "
-            "In Streamlit secrets, set DATABASE_URL to the provider host, "
-            "such as postgresql+psycopg://USER:PASSWORD@HOST:5432/magnus?sslmode=require, then reboot the app."
-        )
-    if "ssl" in text or "certificate" in text:
-        return "PostgreSQL requires SSL. Add ?sslmode=require to DATABASE_URL, then reboot the app."
     if "password" in text or "authentication" in text:
-        return "PostgreSQL rejected the username or password in DATABASE_URL. Update the Streamlit secret and reboot the app."
-    if "could not translate host" in text or "name or service not known" in text or "nodename nor servname" in text:
-        return "The database host in DATABASE_URL was not found. Use the host from the PostgreSQL provider, then reboot the app."
-    return (
-        "The page is open, but PostgreSQL did not connect. "
-        "Check DATABASE_URL in the Streamlit secrets and reboot the app."
-    )
+        return "The database rejected the username or password."
+    return "The page is open, but the database could not be opened."
+
+
+def _sqlite_database_url() -> str:
+    """The app database is data/magnus.db. A postgres address is not used."""
+    path = (ROOT / "data" / "magnus.db").resolve()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        probe = path.parent / ".write-probe"
+        probe.write_text("1", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except OSError:
+        path = Path("/tmp/magnus.db")
+    return "sqlite:///" + path.as_posix()
 
 
 def on_streamlit_cloud() -> bool:
@@ -100,22 +87,11 @@ def connect():
         return None
     apply_streamlit_secrets()
     configured = os.environ.get("DATABASE_URL", "").strip()
-    if configured:
-        os.environ["DATABASE_URL"] = _normalize_database_url(configured)
+    if not configured.startswith("sqlite"):
+        configured = _sqlite_database_url()
+    os.environ["DATABASE_URL"] = configured
+    os.environ["MAGNUS_ENV"] = "development"
     settings = load_settings()
-    if on_streamlit_cloud() and settings.database_url.startswith("sqlite"):
-        _failed = True
-        _status["ready"] = False
-        _status["detail"] = (
-            "This public page is open. Add DATABASE_URL in the Streamlit secrets, "
-            "using a PostgreSQL address. Cards are not saved on the Streamlit server disk."
-        )
-        return None
-    if on_streamlit_cloud() and _database_host(settings.database_url) in {"localhost", "127.0.0.1", "::1", "db"}:
-        _failed = True
-        _status["ready"] = False
-        _status["detail"] = _connection_message(settings.database_url, ConnectionError("connection refused"))
-        return None
     try:
         engine = make_engine(settings.database_url)
         factory = make_session_factory(engine)
@@ -133,9 +109,7 @@ def connect():
         return None
     _factory = factory
     _status["ready"] = True
-    _status["detail"] = "" if settings.database_url.startswith("postgresql") else (
-        "This computer is using a local database. Set DATABASE_URL to PostgreSQL to share cards with the shop."
-    )
+    _status["detail"] = ""
     return factory
 
 
