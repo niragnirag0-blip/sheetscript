@@ -279,3 +279,52 @@ def save_entry(entry: dict) -> int:
             ),
         )
         return int(cursor.lastrowid)
+
+
+def _import_cell(value, kind: str):
+    if value is None:
+        return ""
+    if kind == "date":
+        moment = value if isinstance(value, datetime) else _as_datetime(value)
+        if isinstance(moment, datetime):
+            return moment.date().isoformat()
+        return str(value).strip()
+    if kind in {"power", "axis"} and isinstance(value, bool):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def read_workbook(content: bytes) -> list[dict]:
+    """Read the card-form sheet. Each item is one prescription row."""
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(BytesIO(content), data_only=True)
+    try:
+        sheet = workbook.active
+        table = list(sheet.iter_rows(values_only=True))
+    finally:
+        workbook.close()
+    if not table:
+        raise ValueError("The sheet is empty.")
+    headers = [str(cell).strip() if cell is not None else "" for cell in table[0]]
+    lookup = {header.casefold(): index for index, header in enumerate(headers) if header}
+    if "patient name" not in lookup:
+        raise ValueError("The sheet needs a Patient Name column.")
+    columns = []
+    for header, field, kind in SHEET_COLUMNS:
+        columns.append((lookup.get(header.casefold()), field, kind))
+    parsed = []
+    for excel_row, values in enumerate(table[1:], start=2):
+        payload = {"excel_row": excel_row}
+        empty = True
+        for index, field, kind in columns:
+            raw = "" if index is None or values is None or index >= len(values) else values[index]
+            text = _import_cell(raw, kind)
+            if text != "":
+                empty = False
+            payload[field] = text
+        if not empty:
+            parsed.append(payload)
+    return parsed

@@ -404,6 +404,15 @@ def link_badge(size: int):
     return badge
 
 
+def qr_payload(card: Card) -> str:
+    """Public card code. The reference number only, never the patient name."""
+    ref = clean(card.ref) or "MAGNUS"
+    base = os.environ.get("MAGNUS_QR_BASE_URL", "").strip().rstrip("/")
+    if base and ref != "MAGNUS":
+        return f"{base}/{ref}"
+    return ref
+
+
 def make_qr(payload: str, size: int):
     import qrcode
     from qrcode.constants import ERROR_CORRECT_H
@@ -503,7 +512,7 @@ def render_card(card: Card, layout: dict):
     qr_size = 148
     qr_x = width - frame - 28 - qr_size
     qr_y = 455
-    payload = card.ref or card.name or "Magnus"
+    payload = qr_payload(card)
     image.paste(make_qr(payload, qr_size), (qr_x, qr_y))
 
     verify = "Verify Authenticity @"
@@ -540,12 +549,13 @@ def safe_stem(card: Card) -> str:
     return cleaned.strip("-") or f"row-{card.row}"
 
 
-def save_card(card: Card, layout: dict) -> tuple[Path, Path]:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def save_card(card: Card, layout: dict, output_dir: Path | None = None) -> tuple[Path, Path]:
+    target = output_dir or OUT_DIR
+    target.mkdir(parents=True, exist_ok=True)
     artwork, page = render_print_page(card, layout)
     stem = safe_stem(card)
-    png_path = OUT_DIR / f"{stem}.png"
-    pdf_path = OUT_DIR / f"{stem}.pdf"
+    png_path = target / f"{stem}.png"
+    pdf_path = target / f"{stem}.pdf"
     artwork.save(png_path, "PNG")
     page.save(pdf_path, "PDF", resolution=PRINT_DPI)
     return png_path, pdf_path
@@ -590,11 +600,14 @@ def usb_devices() -> list[dict]:
 
 def check_printer_host(host: str, ports: tuple[int, ...] = (9100, 80, 443), timeout: float = 1.5) -> dict:
     """See if a Zebra on the network answers. A cloud server can only reach an address it can route to."""
+    import re
     import socket
 
     address = (host or "").strip()
     if not address:
         return {"host": "", "open_ports": [], "reachable": False}
+    if re.fullmatch(r"USB\d+", address, re.IGNORECASE):
+        return {"host": address, "open_ports": [], "reachable": False, "error": "usb_port"}
     open_ports = []
     for port in ports:
         probe = socket.socket()
@@ -738,8 +751,13 @@ def card_from_entry(entry: dict) -> Card:
             "add": format_rx(entry.get(f"{prefix}_add"), 2),
         }
 
+    raw_row = entry.get("id") or 0
+    try:
+        row_number = int(raw_row)
+    except (TypeError, ValueError):
+        row_number = 0
     return Card(
-        row=int(entry.get("id") or 0),
+        row=row_number,
         date=format_date(entry.get("entry_date") or entry.get("timestamp") or ""),
         name=clean(entry.get("patient_name")),
         lens=clean(entry.get("lens")),

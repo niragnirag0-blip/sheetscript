@@ -1,0 +1,10 @@
+.venv
+out
+__pycache__
+.git
+data
+prescriptions.db
+.env
+*.xlsx
+.pytest_cache
+.code-review-graph

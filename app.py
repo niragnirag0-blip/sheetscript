@@ -1,12 +1,11 @@
 """Prescription form. Each entry is saved to the database. Excel is written on export."""
 
 from datetime import datetime
-from pathlib import Path
 
 import streamlit as st
 
-import print_cards
-import store
+import app_data
+import validation
 
 st.set_page_config(page_title="Magnus Lens", layout="wide")
 
@@ -175,7 +174,16 @@ def _eye_row(letter: str, placeholders: tuple[str, str, str, str]) -> tuple[str,
     )
 
 
-with st.form("prescription", clear_on_submit=True):
+database = app_data.status()
+if database["detail"]:
+    st.info(database["detail"])
+
+flash = st.session_state.pop("flash", None)
+if flash:
+    st.success(flash)
+
+form_epoch = st.session_state.setdefault("form_epoch", 0)
+with st.form(f"prescription-{form_epoch}", clear_on_submit=False):
     st.markdown(
         """
         <div class="card-top">
@@ -205,103 +213,225 @@ with st.form("prescription", clear_on_submit=True):
     wsl_id = ref_col.text_input("Ref No", placeholder="J4429")
     submitted = st.form_submit_button("Save card", type="primary", use_container_width=True)
 
+def _form_payload() -> dict:
+    return {
+        "date": entry_date.isoformat(),
+        "entry_date": entry_date.isoformat(),
+        "ref_no": wsl_id,
+        "wsl_id": wsl_id,
+        "patient_name": patient_name,
+        "lens": lens,
+        "retailer": optician_name,
+        "optician_name": optician_name,
+        "re_sph": right_sph,
+        "re_cyl": right_cyl,
+        "re_axis": right_axis,
+        "re_add": right_add,
+        "le_sph": left_sph,
+        "le_cyl": left_cyl,
+        "le_axis": left_axis,
+        "le_add": left_add,
+    }
+
+
 if submitted:
-    if not patient_name.strip():
-        st.error("Enter the patient name before saving the card.")
+    payload = _form_payload()
+    errors = validation.prescription_errors(payload)
+    if errors:
+        for message in errors:
+            st.error(message)
     else:
-        saved_at = datetime.now().replace(microsecond=0)
-        entry = {
-            "saved_at": saved_at.isoformat(sep=" "),
-            "entry_date": entry_date.isoformat(),
-            "timestamp": datetime.combine(entry_date, saved_at.time()).strftime("%Y-%m-%d %H:%M:%S"),
-            "wsl_id": wsl_id.strip(),
-            "patient_name": patient_name.strip(),
-            "lens": lens.strip(),
-            "optician_name": optician_name.strip(),
-            "re_sph": right_sph.strip(),
-            "re_cyl": right_cyl.strip(),
-            "re_axis": right_axis.strip(),
-            "re_add": right_add.strip(),
-            "le_sph": left_sph.strip(),
-            "le_cyl": left_cyl.strip(),
-            "le_axis": left_axis.strip(),
-            "le_add": left_add.strip(),
-        }
         try:
-            record_id = store.save_entry(entry)
+            saved = app_data.save_prescription(payload)
+        except app_data.DatabaseNotConfigured as error:
+            st.error(str(error))
         except Exception as error:
             st.error(f"Could not save: {error}")
         else:
-            ref = f" ({wsl_id.strip()})" if wsl_id.strip() else ""
-            st.success(f"Saved {patient_name.strip()}{ref}. Record {record_id}.")
+            ref = f" ({payload['ref_no'].strip()})" if payload["ref_no"].strip() else ""
+            st.session_state["flash"] = f"Saved {payload['patient_name'].strip()}{ref}. Record {saved['id']}."
+            st.session_state["form_epoch"] = form_epoch + 1
+            st.rerun()
 
-st.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True)
+title_col, cards_col = st.columns([3, 1])
+title_col.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True)
+if cards_col.button("Download cards", use_container_width=True):
+    try:
+        st.session_state["cards_zip"] = app_data.cards_archive()
+    except Exception as error:
+        st.error(str(error))
+if st.session_state.get("cards_zip"):
+    st.download_button(
+        "Save all cards",
+        data=st.session_state["cards_zip"],
+        file_name="magnus-cards.zip",
+        mime="application/zip",
+    )
 notice = st.session_state.pop("print_notice", None)
 if notice:
-    if notice["printed"]:
-        st.success(f"Printed {notice['label']} on {notice['printer']}.")
+    if notice.get("job_id"):
+        st.success(
+            f"Print job {notice['job_id']} is {notice['status']}. "
+            "The shop computer will send it to the Zebra. A card has not been confirmed."
+        )
+    elif notice.get("error") and "label" not in notice:
+        st.error(str(notice["error"]))
+    elif notice.get("printed"):
+        st.success(f"Sent {notice['label']} to {notice['printer']}.")
     elif notice.get("error"):
         st.warning(f"{notice['label']} could not print yet ({notice['error']}). It is queued.")
     else:
         st.warning(f"{notice['label']} is queued. It will print when the Zebra is connected.")
 
-saved = store.list_entries()
-if saved:
-    for entry in saved:
-        row = store.entries_preview([entry])[0]
+page_size = 8
+page = int(st.session_state.get("card_page", 0))
+try:
+    saved_rows, total_cards = app_data.list_prescriptions(page_size, page * page_size)
+except app_data.DatabaseNotConfigured:
+    saved_rows, total_cards = [], 0
+
+if saved_rows:
+    for entry in saved_rows:
+        entry_id = entry["id"]
+        status = entry.get("print_status") or "not sent"
+        stem, png, pdf = app_data.card_files(entry)
         with st.container(border=True):
-            who, right, left, action = st.columns([2.1, 2.2, 2.2, 0.9])
-            who.markdown(f"**{row['Patient Name']}**  \n{row['Ref No']} · {row['Date']}")
-            right.markdown(f"R  {row['RE Sph'] or '—'}  {row['RE Cyl'] or '—'}  {row['RE Axis'] or '—'}  {row['RE Add'] or '—'}")
-            left.markdown(f"L  {row['LE Sph'] or '—'}  {row['LE Cyl'] or '—'}  {row['LE Axis'] or '—'}  {row['LE Add'] or '—'}")
-            if action.button("Print", key=f"print-{entry['id']}", type="primary"):
-                st.session_state["print_notice"] = print_cards.print_saved_card(entry)
+            who, right, left, action = st.columns([2.2, 2.0, 2.0, 1.3])
+            who.markdown(
+                f"**{entry['patient_name']}**  \n{entry['ref_no'] or '—'} · {entry['date']}  \n"
+                f"{entry['lens'] or '—'} · {entry['retailer'] or '—'}  \n{entry['created_at']}  \nPrint status: {status}"
+            )
+            right.markdown(
+                f"R  {entry['re_sph'] or '—'}  {entry['re_cyl'] or '—'}  {entry['re_axis'] or '—'}  {entry['re_add'] or '—'}"
+            )
+            left.markdown(
+                f"L  {entry['le_sph'] or '—'}  {entry['le_cyl'] or '—'}  {entry['le_axis'] or '—'}  {entry['le_add'] or '—'}"
+            )
+            action.download_button(
+                "PNG",
+                data=png,
+                file_name=f"{stem}.png",
+                mime="image/png",
+                key=f"png-{entry_id}",
+                use_container_width=True,
+            )
+            action.download_button(
+                "PDF",
+                data=pdf,
+                file_name=f"{stem}.pdf",
+                mime="application/pdf",
+                key=f"pdf-{entry_id}",
+                use_container_width=True,
+            )
+            if action.button("Print", key=f"print-{entry_id}", type="primary"):
+                try:
+                    job = app_data.request_print(entry_id, f"ui-{entry_id}-{datetime.now().timestamp()}")
+                except Exception as error:
+                    st.session_state["print_notice"] = {"error": str(error)}
+                else:
+                    st.session_state["print_notice"] = {"job_id": job["id"], "status": job["status"]}
                 st.rerun()
+    previous, page_label, nxt = st.columns([1, 2, 1])
+    if previous.button("Previous", disabled=page == 0):
+        st.session_state["card_page"] = page - 1
+        st.rerun()
+    page_label.write(f"{page * page_size + 1}–{min(total_cards, (page + 1) * page_size)} of {total_cards}")
+    if nxt.button("Next", disabled=(page + 1) * page_size >= total_cards):
+        st.session_state["card_page"] = page + 1
+        st.rerun()
 else:
     st.write("No cards saved yet.")
 
 
 export_col, printer_col = st.columns([1, 1], gap="large")
 with export_col:
-    st.markdown('<p class="section-label">Export</p>', unsafe_allow_html=True)
-    sheet = st.text_input("Excel file", str(print_cards.DEFAULT_SHEET), key="export_sheet_path")
-    if st.button("Export Excel", type="primary"):
-        export_path = Path(sheet)
-        store.export_sheet(export_path)
-        st.session_state["export_bytes"] = export_path.read_bytes()
-        st.session_state["export_name"] = export_path.name
+    st.markdown('<p class="section-label">Sheet</p>', unsafe_allow_html=True)
+    st.download_button(
+        "Blank sheet",
+        data=app_data.blank_sheet(),
+        file_name="magnus-blank-sheet.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    if st.button("Export sheet", type="primary"):
+        try:
+            st.session_state["export_bytes"] = app_data.export_workbook()
+            st.session_state["export_name"] = "prescriptions.xlsx"
+        except Exception as error:
+            st.error(str(error))
     if st.session_state.get("export_bytes"):
         st.download_button(
-            "Download Excel",
+            "Download sheet",
             data=st.session_state["export_bytes"],
             file_name=st.session_state.get("export_name") or "prescriptions.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+    upload = st.file_uploader("Import sheet", type=["xlsx"], key="import_sheet")
+    if st.button("Add all rows"):
+        if upload is None:
+            st.warning("Choose a sheet first.")
+        else:
+            try:
+                report = app_data.import_workbook(upload.getvalue())
+            except Exception as error:
+                st.error(str(error))
+            else:
+                st.success(f"Added {report['inserted']}. Already saved {report['skipped']}.")
+                for item in report["errors"]:
+                    st.warning(f"Row {item['row']}: {item['error']}")
+                if report["inserted"]:
+                    st.rerun()
 
 with printer_col:
     with st.expander("Printer connection"):
         st.write(
-            "The shop computer only opens this page. "
-            "A USB printer on that computer cannot be seen from the server. "
-            "Enter the Zebra network address to check it from here."
+            "This page does not open the USB cable. The Windows agent on the shop PC "
+            "asks the API for new cards and prints them on Zebra ZC300 USB Card Printer. "
+            "USB002 is that printer's Windows port, not an address."
         )
-        with st.form("printer_check"):
-            printer_ip = st.text_input("Zebra IP address", placeholder="192.168.1.50")
-            check_printer = st.form_submit_button("Check printer")
-        if check_printer:
-            result = print_cards.check_printer_host(printer_ip)
-            if not result["host"]:
-                st.warning("Enter the printer IP address first.")
-            elif result["reachable"]:
-                ports = ", ".join(str(port) for port in result["open_ports"])
-                st.success(f"{result['host']} is connected. Open port: {ports}.")
-            else:
-                st.error(f"{result['host']} is not reachable from this server.")
-
-        if st.button("Check USB on this server"):
-            status = print_cards.check_machine()
-            if status["connected"]:
-                where = status["zebra_printer"] or status["zebra_usb"][0]["name"]
-                st.success(f"USB on this server: {where}")
-            else:
-                st.caption("No Zebra is plugged into this server by USB.")
+        try:
+            shop = app_data.shop_summary()
+        except app_data.DatabaseNotConfigured as error:
+            st.caption(str(error))
+            shop = None
+        if shop is not None:
+            st.write(
+                f"Prescriptions {shop['prescriptions']} · Pending {shop['pending']} · "
+                f"Sent to spooler {shop['submitted_to_spooler']} · Failed {shop['failed']} · "
+                f"Needs review {shop['requires_manual_review']}"
+            )
+            if not shop["devices"]:
+                st.caption("No shop computer has registered yet.")
+            for device in shop["devices"]:
+                seen = device["last_heartbeat_at"] or "no heartbeat yet"
+                st.write(
+                    f"{device['device_name']}: {device['status']} · {device['printer_name']} · "
+                    f"agent {device['agent_version'] or '—'} · last seen {seen}"
+                )
+            shown = st.session_state.get("new_device_token")
+            if shown:
+                st.code(shown, language=None)
+                st.caption("Copy this device token into the shop PC once. It is not shown again.")
+            with st.form("register_device"):
+                device_name = st.text_input("Shop computer name", value="Jagadamba")
+                if st.form_submit_button("Register shop PC"):
+                    try:
+                        _device, token = app_data.register_shop_pc(device_name, "Zebra ZC300 USB Card Printer")
+                    except Exception as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state["new_device_token"] = token
+                        st.rerun()
+            for job in shop["recent_jobs"]:
+                st.caption(f"{job['created_at']} · {job['status']} · {job['id']}")
+                if job["status"] in {"failed", "requires_manual_review", "cancelled"}:
+                    agreed = st.checkbox("The card did not come out of the printer", key=f"confirm-{job['id']}")
+                    if st.button("Send again", key=f"requeue-{job['id']}"):
+                        if job["status"] == "requires_manual_review" and not agreed:
+                            st.error("Confirm that the card did not print before sending it again.")
+                        else:
+                            try:
+                                app_data.send_again(job["id"], agreed or job["status"] != "requires_manual_review")
+                            except Exception as error:
+                                st.error(str(error))
+                            else:
+                                st.rerun()

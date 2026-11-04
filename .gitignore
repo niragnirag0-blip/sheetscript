@@ -3,3 +3,7 @@ out/
 __pycache__/
 *.pyc
 prescriptions.db
+.env
+data/
+.pytest_cache
+printer-agent.json
