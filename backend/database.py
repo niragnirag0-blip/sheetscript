@@ -18,6 +18,8 @@ def make_engine(database_url: str):
         connect_args["check_same_thread"] = False
         if database_url.startswith("sqlite:///") and not database_url.endswith(":memory:"):
             Path(database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+    elif database_url.startswith("postgresql"):
+        connect_args["connect_timeout"] = 8
     return create_engine(database_url, future=True, pool_pre_ping=True, connect_args=connect_args)
 
 

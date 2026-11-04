@@ -6,14 +6,18 @@ import os
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 import store
+from sqlalchemy.exc import SQLAlchemyError
+
 from backend.database import make_engine, make_session_factory, prepare_database
 from backend.migrate_sqlite import migrate
 from backend import services
 from config.settings import ROOT, load_settings
 
 _factory = None
+_failed = False
 _status = {"ready": False, "detail": ""}
 
 
@@ -22,10 +26,45 @@ class DatabaseNotConfigured(RuntimeError):
 
 
 def reset() -> None:
-    global _factory
+    global _factory, _failed
     _factory = None
+    _failed = False
     _status["ready"] = False
     _status["detail"] = ""
+
+
+def _normalize_database_url(url: str) -> str:
+    value = url.strip()
+    if value.startswith("postgres://"):
+        return "postgresql+psycopg://" + value[len("postgres://") :]
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value[len("postgresql://") :]
+    return value
+
+
+def _database_host(url: str) -> str:
+    return (urlparse(url).hostname or "").lower()
+
+
+def _connection_message(url: str, error: BaseException) -> str:
+    host = _database_host(url)
+    text = str(error).lower()
+    if host in {"localhost", "127.0.0.1", "::1", "db"} or "connection refused" in text:
+        return (
+            "The database address is on this computer, so the public website cannot open it. "
+            "In Streamlit secrets, set DATABASE_URL to the provider host, "
+            "such as postgresql+psycopg://USER:PASSWORD@HOST:5432/magnus?sslmode=require, then reboot the app."
+        )
+    if "ssl" in text or "certificate" in text:
+        return "PostgreSQL requires SSL. Add ?sslmode=require to DATABASE_URL, then reboot the app."
+    if "password" in text or "authentication" in text:
+        return "PostgreSQL rejected the username or password in DATABASE_URL. Update the Streamlit secret and reboot the app."
+    if "could not translate host" in text or "name or service not known" in text or "nodename nor servname" in text:
+        return "The database host in DATABASE_URL was not found. Use the host from the PostgreSQL provider, then reboot the app."
+    return (
+        "The page is open, but PostgreSQL did not connect. "
+        "Check DATABASE_URL in the Streamlit secrets and reboot the app."
+    )
 
 
 def on_streamlit_cloud() -> bool:
@@ -54,27 +93,44 @@ def _sqlite_file(database_url: str) -> Path | None:
 
 def connect():
     """Open the shared database once per process."""
-    global _factory
+    global _factory, _failed
     if _factory is not None:
         return _factory
+    if _failed:
+        return None
     apply_streamlit_secrets()
+    configured = os.environ.get("DATABASE_URL", "").strip()
+    if configured:
+        os.environ["DATABASE_URL"] = _normalize_database_url(configured)
     settings = load_settings()
     if on_streamlit_cloud() and settings.database_url.startswith("sqlite"):
+        _failed = True
         _status["ready"] = False
         _status["detail"] = (
             "This public page is open. Add DATABASE_URL in the Streamlit secrets, "
             "using a PostgreSQL address. Cards are not saved on the Streamlit server disk."
         )
         return None
-    engine = make_engine(settings.database_url)
-    factory = make_session_factory(engine)
-    prepare_database(engine, settings, factory)
-    source = ROOT / "prescriptions.db"
-    target = _sqlite_file(settings.database_url)
-    default_target = (ROOT / "data" / "magnus.db").resolve()
-    if source.is_file() and target == default_target:
-        with factory() as session:
-            migrate(source, session, dry_run=False)
+    if on_streamlit_cloud() and _database_host(settings.database_url) in {"localhost", "127.0.0.1", "::1", "db"}:
+        _failed = True
+        _status["ready"] = False
+        _status["detail"] = _connection_message(settings.database_url, ConnectionError("connection refused"))
+        return None
+    try:
+        engine = make_engine(settings.database_url)
+        factory = make_session_factory(engine)
+        prepare_database(engine, settings, factory)
+        source = ROOT / "prescriptions.db"
+        target = _sqlite_file(settings.database_url)
+        default_target = (ROOT / "data" / "magnus.db").resolve()
+        if source.is_file() and target == default_target:
+            with factory() as session:
+                migrate(source, session, dry_run=False)
+    except (SQLAlchemyError, OSError) as error:
+        _failed = True
+        _status["ready"] = False
+        _status["detail"] = _connection_message(settings.database_url, error)
+        return None
     _factory = factory
     _status["ready"] = True
     _status["detail"] = "" if settings.database_url.startswith("postgresql") else (

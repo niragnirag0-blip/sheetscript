@@ -85,6 +85,36 @@ def test_sheet_import_adds_rows_and_skips_duplicates(tmp_path, monkeypatch):
     assert total == 1
 
 
+def test_unreachable_database_keeps_the_page_open(monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    monkeypatch.setenv("DATABASE_URL", "postgres://magnus:secret@127.0.0.1:1/magnus")
+    monkeypatch.setenv("MAGNUS_ENV", "development")
+
+    def fail(_url):
+        raise OperationalError("connect", {}, OSError("connection refused"))
+
+    monkeypatch.setattr(app_data, "make_engine", fail)
+    app_data.reset()
+    state = app_data.status()
+    app_data.reset()
+    assert state["ready"] is False
+    assert "public website" in state["detail"]
+    assert "magnus:secret" not in state["detail"]
+
+
+def test_streamlit_cloud_rejects_a_localhost_database(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://magnus:secret@localhost:5432/magnus")
+    monkeypatch.setenv("MAGNUS_ENV", "development")
+    monkeypatch.setattr(app_data, "on_streamlit_cloud", lambda: True)
+    app_data.reset()
+    state = app_data.status()
+    app_data.reset()
+    assert state["ready"] is False
+    assert "this computer" in state["detail"]
+    assert "magnus:secret" not in state["detail"]
+
+
 def test_streamlit_cloud_does_not_write_a_local_database(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/cloud.db")
     monkeypatch.setattr(app_data, "on_streamlit_cloud", lambda: True)
