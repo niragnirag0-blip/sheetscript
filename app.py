@@ -13,10 +13,8 @@ st.set_page_config(page_title="Magnus Lens", layout="wide")
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,600&family=Schibsted+Grotesk:wght@500;600;700&display=swap');
-
     html, body, [class*="css"] {
-        font-family: "Schibsted Grotesk", "Liberation Sans", sans-serif;
+        font-family: "Segoe UI", "Liberation Sans", sans-serif;
     }
     .stApp {
         background: #E4EEE8;
@@ -66,7 +64,7 @@ st.markdown(
         color: #7A4E2A;
         background: linear-gradient(180deg, #F7F4EF 0%, #C9C3BA 42%, #F4F1EB 100%);
         clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
-        font-family: Newsreader, "Liberation Serif", serif;
+        font-family: Georgia, "Liberation Serif", serif;
         line-height: 0.95;
     }
     .ribbon small {
@@ -263,22 +261,22 @@ else:
     st.write("No cards saved yet.")
 
 
-def _write_export() -> None:
-    store.export_sheet(Path(st.session_state["export_sheet_path"]))
-
-
 export_col, printer_col = st.columns([1, 1], gap="large")
 with export_col:
     st.markdown('<p class="section-label">Export</p>', unsafe_allow_html=True)
     sheet = st.text_input("Excel file", str(print_cards.DEFAULT_SHEET), key="export_sheet_path")
-    st.download_button(
-        "Export Excel",
-        data=store.workbook_bytes(),
-        file_name=Path(sheet).name or "prescriptions.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        on_click=_write_export,
-        type="primary",
-    )
+    if st.button("Export Excel", type="primary"):
+        export_path = Path(sheet)
+        store.export_sheet(export_path)
+        st.session_state["export_bytes"] = export_path.read_bytes()
+        st.session_state["export_name"] = export_path.name
+    if st.session_state.get("export_bytes"):
+        st.download_button(
+            "Download Excel",
+            data=st.session_state["export_bytes"],
+            file_name=st.session_state.get("export_name") or "prescriptions.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
 with printer_col:
     with st.expander("Printer connection"):
@@ -300,9 +298,10 @@ with printer_col:
             else:
                 st.error(f"{result['host']} is not reachable from this server.")
 
-        status = print_cards.check_machine()
-        if status["connected"]:
-            where = status["zebra_printer"] or status["zebra_usb"][0]["name"]
-            st.success(f"USB on this server: {where}")
-        else:
-            st.caption("No Zebra is plugged into the server itself by USB.")
+        if st.button("Check USB on this server"):
+            status = print_cards.check_machine()
+            if status["connected"]:
+                where = status["zebra_printer"] or status["zebra_usb"][0]["name"]
+                st.success(f"USB on this server: {where}")
+            else:
+                st.caption("No Zebra is plugged into this server by USB.")

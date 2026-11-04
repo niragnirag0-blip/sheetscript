@@ -35,12 +35,30 @@ LAYOUT_PATH = ROOT / "layout.json"
 OUT_DIR = ROOT / "out"
 STATE_PATH = OUT_DIR / "printed.json"
 QUEUE_PATH = OUT_DIR / "queue.json"
-FONT_CANDIDATES = (
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    r"C:\Windows\Fonts\arialbd.ttf",
-)
+FONT_DIR = ROOT / "fonts"
+FONT_FILES = {
+    "sans": (
+        FONT_DIR / "LiberationSans-Regular.ttf",
+        Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path(r"C:\Windows\Fonts\arial.ttf"),
+    ),
+    "sans_bold": (
+        FONT_DIR / "LiberationSans-Bold.ttf",
+        Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        Path(r"C:\Windows\Fonts\arialbd.ttf"),
+    ),
+    "serif_bold": (
+        FONT_DIR / "LiberationSerif-Bold.ttf",
+        Path("/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"),
+        Path(r"C:\Windows\Fonts\timesbd.ttf"),
+    ),
+}
 
 # CR80 card, the stock the ZC300 prints.
 CARD_MM = (85.60, 53.98)
@@ -104,13 +122,19 @@ def load_layout() -> dict:
         return json.load(handle)
 
 
-def find_font() -> str:
-    for path in FONT_CANDIDATES:
-        if Path(path).is_file():
-            return path
-    raise SystemExit(
-        "No bold sans font found. Install fonts-liberation, or edit FONT_CANDIDATES."
-    )
+def font_file(kind: str) -> str:
+    """Use the font shipped with the app, then a system font if that file is missing."""
+    for path in FONT_FILES[kind]:
+        if path.is_file():
+            return str(path)
+    names = ", ".join(path.name for path in FONT_FILES[kind])
+    raise OSError(f"No {kind} font found. Add one of these under fonts/: {names}")
+
+
+def load_font(kind: str, size: int):
+    from PIL import ImageFont
+
+    return ImageFont.truetype(font_file(kind), size)
 
 
 def clean(value) -> str:
@@ -274,11 +298,6 @@ WHITE = (255, 255, 255)
 RIBBON = (232, 232, 232)
 PURPLE = (112, 58, 168)
 
-SANS = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-SANS_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
-SERIF_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
-
-
 def cr80_pixels() -> tuple[int, int]:
     dots_per_mm = PRINT_DPI / 25.4
     return round(CARD_MM[0] * dots_per_mm), round(CARD_MM[1] * dots_per_mm)
@@ -322,7 +341,7 @@ def draw_fields(draw, rows: list[tuple[str, str]], x: float, baseline: float, ga
 
 
 def draw_logo(base, box: tuple) -> None:
-    from PIL import ImageDraw, ImageFont
+    from PIL import ImageDraw
 
     overlay = base.copy()
     draw = ImageDraw.Draw(overlay)
@@ -340,9 +359,9 @@ def draw_logo(base, box: tuple) -> None:
     draw.line(ribbon + [ribbon[0]], fill=(190, 190, 190), width=2)
     base.paste(overlay)
     draw = ImageDraw.Draw(base)
-    magnus_font = ImageFont.truetype(SERIF_BOLD, 42)
-    lens_font = ImageFont.truetype(SANS_BOLD, 16)
-    mark_font = ImageFont.truetype(SANS, 12)
+    magnus_font = load_font("serif_bold", 42)
+    lens_font = load_font("sans_bold", 16)
+    mark_font = load_font("sans", 12)
     magnus = "MAGNUS"
     mw, _ = text_size(draw, magnus, magnus_font)
     text_x = x0 + notch + 18
@@ -403,7 +422,7 @@ def make_qr(payload: str, size: int):
 
 
 def render_card(card: Card, layout: dict):
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     width, height = cr80_pixels()
     image = Image.new("RGB", (width, height), BORDER)
@@ -416,12 +435,12 @@ def render_card(card: Card, layout: dict):
         fill=WHITE,
     )
 
-    label_font = ImageFont.truetype(SANS, 28)
-    value_font = ImageFont.truetype(SANS_BOLD, 30)
-    header_font = ImageFont.truetype(SANS_BOLD, 28)
-    cell_font = ImageFont.truetype(SANS_BOLD, 30)
-    side_font = ImageFont.truetype(SANS_BOLD, 28)
-    verify_font = ImageFont.truetype(SANS_BOLD, 20)
+    label_font = load_font("sans", 28)
+    value_font = load_font("sans_bold", 30)
+    header_font = load_font("sans_bold", 28)
+    cell_font = load_font("sans_bold", 30)
+    side_font = load_font("sans_bold", 28)
+    verify_font = load_font("sans_bold", 20)
 
     left = 68
     draw_fields(
@@ -532,12 +551,20 @@ def save_card(card: Card, layout: dict) -> tuple[Path, Path]:
     return png_path, pdf_path
 
 
+def _command_output(command: list[str], timeout: float = 2) -> str:
+    """Run a local command and give up quickly. A missing print service must not stall the page."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout or ""
+
+
 def list_printers() -> list[str]:
     if not shutil.which("lpstat"):
         return []
-    result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True)
     names = []
-    for line in result.stdout.splitlines():
+    for line in _command_output(["lpstat", "-p"]).splitlines():
         parts = line.split()
         if len(parts) >= 2 and parts[0] == "printer":
             names.append(parts[1])
@@ -548,9 +575,8 @@ def usb_devices() -> list[dict]:
     """USB devices currently plugged into this computer."""
     if not shutil.which("lsusb"):
         return []
-    result = subprocess.run(["lsusb"], capture_output=True, text=True)
     devices = []
-    for line in result.stdout.splitlines():
+    for line in _command_output(["lsusb"]).splitlines():
         # Bus 003 Device 002: ID 0000:3825   USB OPTICAL MOUSE
         parts = line.split("ID", 1)
         if len(parts) != 2:
