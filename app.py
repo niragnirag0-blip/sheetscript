@@ -8,39 +8,203 @@ import streamlit as st
 import print_cards
 import store
 
-st.set_page_config(page_title="Magnus card printer", layout="wide")
-st.title("New prescription")
-st.caption("Fill in the card details. Save stores the row in the database. Export writes the Excel file.")
+st.set_page_config(page_title="Magnus Lens", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,600&family=Schibsted+Grotesk:wght@500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: "Schibsted Grotesk", "Liberation Sans", sans-serif;
+    }
+    .stApp {
+        background: #E4EEE8;
+    }
+    header[data-testid="stHeader"] {
+        background: transparent;
+    }
+    .block-container {
+        max-width: 1080px;
+        padding-top: 1.4rem;
+        padding-bottom: 3rem;
+    }
+    [data-testid="stForm"]:has(h1) {
+        background: #FFFcf8;
+        border: 3px solid #12482E;
+        border-radius: 22px;
+        padding: 1.15rem 1.35rem 0.85rem;
+        box-shadow: 0 10px 28px rgba(18, 72, 46, 0.08);
+    }
+    .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 0.85rem;
+    }
+    .eyebrow {
+        margin: 0;
+        color: #146B3A;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    }
+    .card-top h1 {
+        margin: 0.1rem 0 0;
+        color: #14241B;
+        font-size: 1.85rem;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+    }
+    .ribbon {
+        min-width: 148px;
+        padding: 0.45rem 1.1rem 0.5rem;
+        text-align: center;
+        color: #7A4E2A;
+        background: linear-gradient(180deg, #F7F4EF 0%, #C9C3BA 42%, #F4F1EB 100%);
+        clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+        font-family: Newsreader, "Liberation Serif", serif;
+        line-height: 0.95;
+    }
+    .ribbon small {
+        display: block;
+        font-size: 0.68rem;
+        letter-spacing: 0.22em;
+    }
+    .ribbon strong {
+        display: block;
+        margin-top: 0.12rem;
+        font-size: 1.45rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+    }
+    .rx-label, .eye {
+        color: #146B3A;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+    }
+    .rx-label {
+        text-align: center;
+        font-size: 0.78rem;
+        margin: 0.35rem 0 0.15rem;
+    }
+    .eye {
+        font-size: 1.35rem;
+        padding-top: 0.35rem;
+    }
+    [data-testid="stForm"] label p,
+    [data-testid="stForm"] label {
+        color: #146B3A !important;
+        font-weight: 700 !important;
+        font-size: 0.78rem !important;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+    [data-testid="stForm"] input {
+        border: 1px solid #D5D0C8;
+        border-radius: 8px;
+        background: #FFFFFF;
+        color: #161616;
+    }
+    [data-testid="stForm"] input:focus {
+        border-color: #12482E;
+        box-shadow: 0 0 0 1px #12482E;
+    }
+    [data-testid="stForm"] button[kind="primaryFormSubmit"],
+    [data-testid="stForm"] [data-testid="stBaseButton-primary"] {
+        background: #12482E;
+        border: none;
+        color: #FFFFFF;
+        border-radius: 10px;
+        font-weight: 700;
+        min-height: 2.7rem;
+    }
+    [data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
+    [data-testid="stForm"] [data-testid="stBaseButton-primary"]:hover {
+        background: #0D3422;
+        color: #FFFFFF;
+    }
+    .section-label {
+        margin: 1.35rem 0 0.35rem;
+        color: #14241B;
+        font-size: 1.15rem;
+        font-weight: 700;
+    }
+    [data-testid="stTable"] {
+        background: #FFFcf8;
+        border: 1px solid #D3DDD6;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+    [data-testid="stTable"] th {
+        color: #12482E;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def _power_headers() -> None:
+    spacer, sph, cyl, axis, add = st.columns([0.42, 1, 1, 1, 1])
+    spacer.markdown("")
+    for column, name in ((sph, "SPH"), (cyl, "CYL"), (axis, "AXIS"), (add, "ADD")):
+        column.markdown(f'<div class="rx-label">{name}</div>', unsafe_allow_html=True)
+
+
+def _eye_row(letter: str, placeholders: tuple[str, str, str, str]) -> tuple[str, str, str, str]:
+    mark, sph, cyl, axis, add = st.columns([0.42, 1, 1, 1, 1])
+    mark.markdown(f'<div class="eye">{letter}</div>', unsafe_allow_html=True)
+    labels = (f"{letter} sphere", f"{letter} cylinder", f"{letter} axis", f"{letter} add")
+    fields = (sph, cyl, axis, add)
+    return tuple(
+        column.text_input(label, placeholder=placeholder, label_visibility="collapsed")
+        for column, label, placeholder in zip(fields, labels, placeholders)
+    )
+
 
 with st.form("prescription", clear_on_submit=True):
-    top_left, top_mid, top_right = st.columns(3)
-    entry_date = top_left.date_input("Date", datetime.now().date())
-    wsl_id = top_mid.text_input("WSL ID", placeholder="J4429")
-    patient_name = top_right.text_input("Patient name", placeholder="Keshav Gupta")
+    st.markdown(
+        """
+        <div class="card-top">
+            <div>
+                <p class="eyebrow">Warranty card</p>
+                <h1>New prescription</h1>
+            </div>
+            <div class="ribbon" aria-hidden="true">
+                <small>MAGNUS</small>
+                <strong>LENS</strong>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    date_col, name_col, lens_col = st.columns(3)
+    entry_date = date_col.date_input("Date", datetime.now().date())
+    patient_name = name_col.text_input("Name", placeholder="Keshav Gupta")
+    lens = lens_col.text_input("Lens", placeholder="MAGNUS BR 1.67")
 
-    detail_left, detail_right = st.columns(2)
-    lens = detail_left.text_input("Lens", placeholder="MAGNUS BR 1.67")
-    optician_name = detail_right.text_input("Optician name", placeholder="Space Optics")
+    _power_headers()
+    right_sph, right_cyl, right_axis, right_add = _eye_row("R", ("-10.00", "-1.00", "150", "1.50"))
+    left_sph, left_cyl, left_axis, left_add = _eye_row("L", ("-11.00", "-1.00", "140", "1.50"))
 
-    st.subheader("Right eye")
-    re_sph, re_cyl, re_axis, re_add = st.columns(4)
-    right_sph = re_sph.text_input("RE Sph", placeholder="-10.00")
-    right_cyl = re_cyl.text_input("RE Cyl", placeholder="-1.00")
-    right_axis = re_axis.text_input("RE Axis", placeholder="150")
-    right_add = re_add.text_input("RE Add", placeholder="1.50")
-
-    st.subheader("Left eye")
-    le_sph, le_cyl, le_axis, le_add = st.columns(4)
-    left_sph = le_sph.text_input("LE Sph", placeholder="-11.00")
-    left_cyl = le_cyl.text_input("LE Cyl", placeholder="-1.00")
-    left_axis = le_axis.text_input("LE Axis", placeholder="140")
-    left_add = le_add.text_input("LE Add", placeholder="1.50")
-
-    submitted = st.form_submit_button("Save entry", type="primary")
+    retailer_col, ref_col = st.columns(2)
+    optician_name = retailer_col.text_input("Retailer", placeholder="Space Optics")
+    wsl_id = ref_col.text_input("Ref No", placeholder="J4429")
+    submitted = st.form_submit_button("Save card", type="primary", use_container_width=True)
 
 if submitted:
     if not patient_name.strip():
-        st.error("Patient name is required.")
+        st.error("Enter the patient name before saving the card.")
     else:
         saved_at = datetime.now().replace(microsecond=0)
         entry = {
@@ -66,50 +230,56 @@ if submitted:
             st.error(f"Could not save: {error}")
         else:
             ref = f" ({wsl_id.strip()})" if wsl_id.strip() else ""
-            st.success(f"Saved {patient_name.strip()}{ref} in the database. Record {record_id}.")
+            st.success(f"Saved {patient_name.strip()}{ref}. Record {record_id}.")
 
-st.subheader("Saved entries")
+st.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True)
 saved = store.list_entries()
 if saved:
     st.table(store.entries_preview(saved))
 else:
-    st.write("No entries saved yet.")
+    st.write("No cards saved yet.")
+
 
 def _write_export() -> None:
     store.export_sheet(Path(st.session_state["export_sheet_path"]))
 
-sheet = st.text_input("Excel file", str(print_cards.DEFAULT_SHEET), key="export_sheet_path")
-st.download_button(
-    "Export Excel",
-    data=store.workbook_bytes(),
-    file_name=Path(sheet).name or "prescriptions.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    on_click=_write_export,
-    type="primary",
-)
 
-with st.expander("Printer connection", expanded=True):
-    st.write(
-        "The form works from the server, so the shop computer does not need Python installed. "
-        "The server cannot see a USB cable plugged into another computer. "
-        "It can check a Zebra only when that printer has a network address the server can reach."
+export_col, printer_col = st.columns([1, 1], gap="large")
+with export_col:
+    st.markdown('<p class="section-label">Export</p>', unsafe_allow_html=True)
+    sheet = st.text_input("Excel file", str(print_cards.DEFAULT_SHEET), key="export_sheet_path")
+    st.download_button(
+        "Export Excel",
+        data=store.workbook_bytes(),
+        file_name=Path(sheet).name or "prescriptions.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        on_click=_write_export,
+        type="primary",
     )
-    with st.form("printer_check"):
-        printer_ip = st.text_input("Zebra IP address", placeholder="192.168.1.50")
-        check_printer = st.form_submit_button("Check printer")
-    if check_printer:
-        result = print_cards.check_printer_host(printer_ip)
-        if not result["host"]:
-            st.warning("Enter the printer IP address first.")
-        elif result["reachable"]:
-            ports = ", ".join(str(port) for port in result["open_ports"])
-            st.success(f"{result['host']} is connected. Open port: {ports}.")
-        else:
-            st.error(f"{result['host']} is not reachable from this server.")
 
-    status = print_cards.check_machine()
-    if status["connected"]:
-        where = status["zebra_printer"] or status["zebra_usb"][0]["name"]
-        st.success(f"USB on this server: {where}")
-    else:
-        st.caption("No Zebra is plugged into the server itself by USB.")
+with printer_col:
+    with st.expander("Printer connection"):
+        st.write(
+            "The shop computer only opens this page. "
+            "A USB printer on that computer cannot be seen from the server. "
+            "Enter the Zebra network address to check it from here."
+        )
+        with st.form("printer_check"):
+            printer_ip = st.text_input("Zebra IP address", placeholder="192.168.1.50")
+            check_printer = st.form_submit_button("Check printer")
+        if check_printer:
+            result = print_cards.check_printer_host(printer_ip)
+            if not result["host"]:
+                st.warning("Enter the printer IP address first.")
+            elif result["reachable"]:
+                ports = ", ".join(str(port) for port in result["open_ports"])
+                st.success(f"{result['host']} is connected. Open port: {ports}.")
+            else:
+                st.error(f"{result['host']} is not reachable from this server.")
+
+        status = print_cards.check_machine()
+        if status["connected"]:
+            where = status["zebra_printer"] or status["zebra_usb"][0]["name"]
+            st.success(f"USB on this server: {where}")
+        else:
+            st.caption("No Zebra is plugged into the server itself by USB.")
