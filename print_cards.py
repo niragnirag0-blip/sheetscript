@@ -701,6 +701,47 @@ def flush_queue(printer: str | None) -> None:
     save_json(QUEUE_PATH, remaining)
 
 
+def card_from_entry(entry: dict) -> Card:
+    """Build a printable card from one saved prescription."""
+
+    def eye(prefix: str) -> dict:
+        return {
+            "sph": format_rx(entry.get(f"{prefix}_sph"), 2),
+            "cyl": format_rx(entry.get(f"{prefix}_cyl"), 2),
+            "axis": format_rx(entry.get(f"{prefix}_axis"), 0),
+            "add": format_rx(entry.get(f"{prefix}_add"), 2),
+        }
+
+    return Card(
+        row=int(entry.get("id") or 0),
+        date=format_date(entry.get("entry_date") or entry.get("timestamp") or ""),
+        name=clean(entry.get("patient_name")),
+        lens=clean(entry.get("lens")),
+        retailer=clean(entry.get("optician_name")),
+        ref=clean(entry.get("wsl_id")),
+        right=eye("re"),
+        left=eye("le"),
+    )
+
+
+def print_saved_card(entry: dict) -> dict:
+    """Render one saved card and send it to the Zebra, or queue it until the printer is connected."""
+    card = card_from_entry(entry)
+    layout = load_layout()
+    printer = choose_printer(None)
+    _png_path, pdf_path = save_card(card, layout)
+    key = f"db|{entry.get('id')}|{card.fingerprint()}"
+    if not printer:
+        enqueue(key, card, pdf_path)
+        return {"printed": False, "label": card.label(), "printer": ""}
+    try:
+        send_to_printer(pdf_path, printer)
+    except Exception as error:
+        enqueue(key, card, pdf_path)
+        return {"printed": False, "label": card.label(), "printer": printer, "error": str(error)}
+    return {"printed": True, "label": card.label(), "printer": printer}
+
+
 def produce(card: Card, printer: str | None, layout: dict, key: str) -> None:
     png_path, pdf_path = save_card(card, layout)
     remember(key)

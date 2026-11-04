@@ -95,26 +95,31 @@ st.markdown(
         font-size: 1.35rem;
         padding-top: 0.35rem;
     }
-    [data-testid="stForm"] label p,
-    [data-testid="stForm"] label {
+    [data-testid="stForm"]:has(h1) label p,
+    [data-testid="stForm"]:has(h1) label {
         color: #146B3A !important;
         font-weight: 700 !important;
         font-size: 0.78rem !important;
         letter-spacing: 0.06em;
         text-transform: uppercase;
     }
-    [data-testid="stForm"] input {
-        border: 1px solid #D5D0C8;
-        border-radius: 8px;
-        background: #FFFFFF;
-        color: #161616;
+    [data-testid="stForm"]:has(h1) input,
+    [data-testid="stDateInputField"] {
+        border: 1px solid #D5D0C8 !important;
+        border-radius: 8px !important;
+        background: #FFFFFF !important;
+        color: #161616 !important;
     }
-    [data-testid="stForm"] input:focus {
-        border-color: #12482E;
+    [data-testid="stDateInputField"] * {
+        color: #161616 !important;
+    }
+    [data-testid="stForm"]:has(h1) input:focus,
+    [data-testid="stDateInputField"]:focus-within {
+        border-color: #12482E !important;
         box-shadow: 0 0 0 1px #12482E;
     }
-    [data-testid="stForm"] button[kind="primaryFormSubmit"],
-    [data-testid="stForm"] [data-testid="stBaseButton-primary"] {
+    [data-testid="stForm"]:has(h1) button[kind="primaryFormSubmit"],
+    [data-testid="stForm"]:has(h1) [data-testid="stBaseButton-primary"] {
         background: #12482E;
         border: none;
         color: #FFFFFF;
@@ -122,8 +127,8 @@ st.markdown(
         font-weight: 700;
         min-height: 2.7rem;
     }
-    [data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
-    [data-testid="stForm"] [data-testid="stBaseButton-primary"]:hover {
+    [data-testid="stForm"]:has(h1) button[kind="primaryFormSubmit"]:hover,
+    [data-testid="stForm"]:has(h1) [data-testid="stBaseButton-primary"]:hover {
         background: #0D3422;
         color: #FFFFFF;
     }
@@ -233,9 +238,27 @@ if submitted:
             st.success(f"Saved {patient_name.strip()}{ref}. Record {record_id}.")
 
 st.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True)
+notice = st.session_state.pop("print_notice", None)
+if notice:
+    if notice["printed"]:
+        st.success(f"Printed {notice['label']} on {notice['printer']}.")
+    elif notice.get("error"):
+        st.warning(f"{notice['label']} could not print yet ({notice['error']}). It is queued.")
+    else:
+        st.warning(f"{notice['label']} is queued. It will print when the Zebra is connected.")
+
 saved = store.list_entries()
 if saved:
-    st.table(store.entries_preview(saved))
+    for entry in saved:
+        row = store.entries_preview([entry])[0]
+        with st.container(border=True):
+            who, right, left, action = st.columns([2.1, 2.2, 2.2, 0.9])
+            who.markdown(f"**{row['Patient Name']}**  \n{row['Ref No']} · {row['Date']}")
+            right.markdown(f"R  {row['RE Sph'] or '—'}  {row['RE Cyl'] or '—'}  {row['RE Axis'] or '—'}  {row['RE Add'] or '—'}")
+            left.markdown(f"L  {row['LE Sph'] or '—'}  {row['LE Cyl'] or '—'}  {row['LE Axis'] or '—'}  {row['LE Add'] or '—'}")
+            if action.button("Print", key=f"print-{entry['id']}", type="primary"):
+                st.session_state["print_notice"] = print_cards.print_saved_card(entry)
+                st.rerun()
 else:
     st.write("No cards saved yet.")
 
