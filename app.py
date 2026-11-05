@@ -267,7 +267,7 @@ with export_col:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     upload = st.file_uploader("Import sheet", type=["xlsx"], key="import_sheet")
-    if st.button("Add all rows"):
+    if st.button("Print all"):
         if upload is None:
             st.warning("Choose a sheet first.")
         else:
