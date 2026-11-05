@@ -5,7 +5,6 @@ from datetime import datetime
 import streamlit as st
 
 import app_data
-import validation
 
 st.set_page_config(page_title="Magnus Lens", layout="wide")
 
@@ -156,24 +155,6 @@ st.markdown(
 )
 
 
-def _power_headers() -> None:
-    spacer, sph, cyl, axis, add = st.columns([0.42, 1, 1, 1, 1])
-    spacer.markdown("")
-    for column, name in ((sph, "SPH"), (cyl, "CYL"), (axis, "AXIS"), (add, "ADD")):
-        column.markdown(f'<div class="rx-label">{name}</div>', unsafe_allow_html=True)
-
-
-def _eye_row(letter: str, placeholders: tuple[str, str, str, str]) -> tuple[str, str, str, str]:
-    mark, sph, cyl, axis, add = st.columns([0.42, 1, 1, 1, 1])
-    mark.markdown(f'<div class="eye">{letter}</div>', unsafe_allow_html=True)
-    labels = (f"{letter} sphere", f"{letter} cylinder", f"{letter} axis", f"{letter} add")
-    fields = (sph, cyl, axis, add)
-    return tuple(
-        column.text_input(label, placeholder=placeholder, label_visibility="collapsed")
-        for column, label, placeholder in zip(fields, labels, placeholders)
-    )
-
-
 database = app_data.status()
 if database["detail"]:
     st.info(database["detail"])
@@ -182,88 +163,16 @@ flash = st.session_state.pop("flash", None)
 if flash:
     st.success(flash)
 
-form_epoch = st.session_state.setdefault("form_epoch", 0)
-with st.expander("New prescription", expanded=False):
-    with st.form(f"prescription-{form_epoch}", clear_on_submit=False):
-        st.markdown(
-            """
-            <div class="card-top">
-                <div>
-                    <p class="eyebrow">Warranty card</p>
-                    <h1>New prescription</h1>
-                </div>
-                <div class="ribbon" aria-hidden="true">
-                    <small>MAGNUS</small>
-                    <strong>LENS</strong>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        date_col, name_col, lens_col = st.columns(3)
-        entry_date = date_col.date_input("Date", datetime.now().date())
-        patient_name = name_col.text_input("Name", placeholder="Keshav Gupta")
-        lens = lens_col.text_input("Lens", placeholder="MAGNUS BR 1.67")
-
-        _power_headers()
-        right_sph, right_cyl, right_axis, right_add = _eye_row("R", ("-10.00", "-1.00", "150", "1.50"))
-        left_sph, left_cyl, left_axis, left_add = _eye_row("L", ("-11.00", "-1.00", "140", "1.50"))
-
-        retailer_col, ref_col = st.columns(2)
-        optician_name = retailer_col.text_input("Retailer", placeholder="Space Optics")
-        wsl_id = ref_col.text_input("Ref No", placeholder="J4429")
-        submitted = st.form_submit_button("Save card", type="primary", use_container_width=True)
-
-def _form_payload() -> dict:
-    return {
-        "date": entry_date.isoformat(),
-        "entry_date": entry_date.isoformat(),
-        "ref_no": wsl_id,
-        "wsl_id": wsl_id,
-        "patient_name": patient_name,
-        "lens": lens,
-        "retailer": optician_name,
-        "optician_name": optician_name,
-        "re_sph": right_sph,
-        "re_cyl": right_cyl,
-        "re_axis": right_axis,
-        "re_add": right_add,
-        "le_sph": left_sph,
-        "le_cyl": left_cyl,
-        "le_axis": left_axis,
-        "le_add": left_add,
-    }
-
-
-if submitted:
-    payload = _form_payload()
-    errors = validation.prescription_errors(payload)
-    if errors:
-        for message in errors:
-            st.error(message)
-    else:
-        try:
-            saved = app_data.save_prescription(payload)
-        except app_data.DatabaseNotConfigured as error:
-            st.error(str(error))
-        except Exception as error:
-            st.error(f"Could not save: {error}")
-        else:
-            ref = f" ({payload['ref_no'].strip()})" if payload["ref_no"].strip() else ""
-            st.session_state["flash"] = f"Saved {payload['patient_name'].strip()}{ref}. Record {saved['id']}."
-            st.session_state["form_epoch"] = form_epoch + 1
-            st.rerun()
-
 title_col, cards_col = st.columns([3, 1])
 title_col.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True)
-if cards_col.button("Download cards", use_container_width=True):
+if cards_col.button("Download all PDFs", use_container_width=True):
     try:
         st.session_state["cards_zip"] = app_data.cards_archive()
     except Exception as error:
         st.error(str(error))
 if st.session_state.get("cards_zip"):
     st.download_button(
-        "Save all cards",
+        "Save all PDFs",
         data=st.session_state["cards_zip"],
         file_name="magnus-cards.zip",
         mime="application/zip",
@@ -325,13 +234,10 @@ if saved_rows:
                 use_container_width=True,
             )
             if action.button("Print", key=f"print-{entry_id}", type="primary"):
-                try:
-                    job = app_data.request_print(entry_id, f"ui-{entry_id}-{datetime.now().timestamp()}")
-                except Exception as error:
-                    st.session_state["print_notice"] = {"error": str(error)}
-                else:
-                    st.session_state["print_notice"] = {"job_id": job["id"], "status": job["status"]}
-                st.rerun()
+                st.session_state["browser_print"] = {
+                    "png": png,
+                    "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
+                }
     previous, page_label, nxt = st.columns([1, 2, 1])
     if previous.button("Previous", disabled=page == 0):
         st.session_state["card_page"] = page - 1
@@ -343,6 +249,13 @@ if saved_rows:
 else:
     st.write("No cards saved yet.")
 
+browser_print = st.session_state.get("browser_print")
+if browser_print:
+    st.html(
+        app_data.print_markup(browser_print["png"], browser_print["token"]),
+        unsafe_allow_javascript=True,
+    )
+
 
 export_col, printer_col = st.columns([1, 1], gap="large")
 with export_col:
@@ -353,19 +266,6 @@ with export_col:
         file_name="magnus-blank-sheet.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    if st.button("Export sheet", type="primary"):
-        try:
-            st.session_state["export_bytes"] = app_data.export_workbook()
-            st.session_state["export_name"] = "prescriptions.xlsx"
-        except Exception as error:
-            st.error(str(error))
-    if st.session_state.get("export_bytes"):
-        st.download_button(
-            "Download sheet",
-            data=st.session_state["export_bytes"],
-            file_name=st.session_state.get("export_name") or "prescriptions.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
     upload = st.file_uploader("Import sheet", type=["xlsx"], key="import_sheet")
     if st.button("Add all rows"):
         if upload is None:
@@ -385,9 +285,9 @@ with export_col:
 with printer_col:
     with st.expander("Printer connection"):
         st.write(
-            "This page does not open the USB cable. The Windows agent on the shop PC "
-            "asks the API for new cards and prints them on Zebra ZC300 USB Card Printer. "
-            "USB002 is that printer's Windows port, not an address."
+            "Print on a saved card opens this computer's print dialog. "
+            "It works offline: pick the Zebra, paper size CR80 (85.6 × 54 mm), and actual size. "
+            "The shop agent is a separate queue. USB002 is the printer's Windows port, not an address."
         )
         try:
             shop = app_data.shop_summary()

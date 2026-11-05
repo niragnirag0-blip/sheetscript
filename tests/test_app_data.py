@@ -1,4 +1,7 @@
 import app_data
+from io import BytesIO
+from zipfile import ZipFile
+
 from validation import prescription_errors
 
 
@@ -35,11 +38,22 @@ def test_page_saves_through_the_database(tmp_path, monkeypatch):
     assert workbook[:2] == b"PK"
     stem, png, pdf = app_data.card_files(saved)
     archive = app_data.cards_archive()
+    with ZipFile(BytesIO(archive)) as packed:
+        names = packed.namelist()
+        pdf_bytes = packed.read(names[0])
     assert stem.startswith("J4429")
     assert png.startswith(b"\x89PNG")
     assert pdf.startswith(b"%PDF")
     assert archive[:2] == b"PK"
+    assert names == [f"{stem}.pdf"]
+    assert pdf_bytes.startswith(b"%PDF")
     assert prescription_errors({"patient_name": " "})
+    markup = app_data.print_markup(png, "card-1")
+    assert "contentWindow.print()" in markup
+    assert "85.6mm 53.98mm" in markup
+    assert "data:image/png;base64," in markup
+    assert "visibility: hidden" not in markup
+    assert markup.index("sessionStorage.getItem") < markup.index("contentWindow.print()")
 
 
 def test_sheet_import_adds_rows_and_skips_duplicates(tmp_path, monkeypatch):

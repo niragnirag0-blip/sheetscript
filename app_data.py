@@ -154,8 +154,46 @@ def card_files(entry: dict) -> tuple[str, bytes, bytes]:
     return render_bytes(entry)
 
 
+def print_markup(png: bytes, token: str) -> str:
+    """Card-only page for the browser print dialog. No shop agent and no network."""
+    import base64
+
+    safe = "".join(ch for ch in token if ch.isalnum() or ch == "-")
+    encoded = base64.b64encode(png).decode("ascii")
+    return f"""
+<div id="magnus-print-src" hidden data-png="data:image/png;base64,{encoded}"></div>
+<script>
+(function () {{
+  var token = "{safe}";
+  var key = "magnus-print";
+  if (sessionStorage.getItem(key) === token) return;
+  sessionStorage.setItem(key, token);
+  var frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;left:-200mm;top:0;width:85.6mm;height:53.98mm;border:0;";
+  document.body.appendChild(frame);
+  var doc = frame.contentWindow.document;
+  var style = doc.createElement("style");
+  style.textContent = "@page{{size:85.6mm 53.98mm;margin:0}}html,body{{margin:0;padding:0;width:85.6mm;height:53.98mm;overflow:hidden}}img{{display:block;width:85.6mm;height:53.98mm}}";
+  doc.head.appendChild(style);
+  var img = doc.createElement("img");
+  img.alt = "Warranty card";
+  img.src = document.getElementById("magnus-print-src").getAttribute("data-png");
+  doc.body.style.margin = "0";
+  doc.body.appendChild(img);
+  function go() {{
+    setTimeout(function () {{ frame.contentWindow.focus(); frame.contentWindow.print(); }}, 0);
+  }}
+  if (img.complete) go();
+  else img.addEventListener("load", go);
+  frame.contentWindow.addEventListener("afterprint", function () {{ frame.remove(); }});
+}})();
+</script>
+"""
+
+
 def cards_archive() -> bytes:
-    """Zip every saved card as PNG and PDF."""
+    """Zip every saved card as a PDF."""
     rows, _total = list_prescriptions(500, 0)
     if not rows:
         raise DatabaseNotConfigured("No cards saved yet.")
@@ -163,10 +201,9 @@ def cards_archive() -> bytes:
     used = set()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for entry in rows:
-            stem, png, pdf = card_files(entry)
+            stem, _png, pdf = card_files(entry)
             name = stem if stem not in used else f"{stem}-{str(entry['id'])[:8]}"
             used.add(name)
-            archive.writestr(f"{name}.png", png)
             archive.writestr(f"{name}.pdf", pdf)
     return buffer.getvalue()
 
