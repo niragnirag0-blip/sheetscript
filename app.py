@@ -147,14 +147,13 @@ st.markdown(
         letter-spacing: 0.04em;
         text-transform: uppercase;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] {
+    [data-testid="stVerticalBlock"]:has(.row-name) {
         background: #F7FBF8;
-        border: 1px solid #C9D9CF !important;
-        border-radius: 8px;
-        padding: 0.05rem 0.4rem 0.1rem;
+        border-radius: 8px !important;
+        padding: 0.15rem 0.55rem !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdown"],
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stElementContainer"] {
+    [data-testid="stVerticalBlock"]:has(.row-name) [data-testid="stMarkdown"],
+    [data-testid="stVerticalBlock"]:has(.row-name) [data-testid="stElementContainer"] {
         margin: 0;
     }
     .row-name, .row-meta, .row-eyes {
@@ -179,15 +178,15 @@ st.markdown(
     .row-eyes b:first-child {
         margin-left: 0;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] button {
-        min-height: 1.7rem !important;
-        height: 1.7rem;
+    [data-testid="stVerticalBlock"]:has(.row-name) button {
+        min-height: 1.75rem !important;
+        height: 1.75rem !important;
         padding: 0 0.55rem !important;
         font-size: 0.78rem !important;
         border-radius: 7px;
         white-space: nowrap;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stBaseButton-primary"] {
+    [data-testid="stVerticalBlock"]:has(.row-name) [data-testid="stBaseButton-primary"] {
         background: #12482E;
         border: none;
         color: #FFFFFF;
@@ -255,6 +254,7 @@ if saved_rows:
                 [2.4, 2.2, 2.0, 1.05, 1.05, 1.15],
                 gap="small",
                 vertical_alignment="center",
+                wrap=False,
             )
             name.markdown(f"<p class='row-name'>{escape(entry['patient_name'])}</p>", unsafe_allow_html=True)
             meta.markdown(
@@ -282,7 +282,7 @@ if saved_rows:
                 key=f"pdf-{entry_id}",
                 use_container_width=True,
             )
-            if print_col.button("Print", key=f"print-{entry_id}", type="primary"):
+            if print_col.button("Print", key=f"print-{entry_id}", type="primary", use_container_width=True):
                 st.session_state["browser_print"] = {
                     "png": png,
                     "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
@@ -308,13 +308,13 @@ if browser_print:
 
 export_col, printer_col = st.columns([1, 1], gap="large")
 with export_col:
-    st.markdown('<p class="section-label">Sheet</p>', unsafe_allow_html=True)
-    st.download_button(
-        "Blank sheet",
-        data=app_data.blank_sheet(),
-        file_name="magnus-blank-sheet.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    # st.markdown('<p class="section-label">Sheet</p>', unsafe_allow_html=True)
+    # st.download_button(
+    #     "Blank sheet",
+    #     data=app_data.blank_sheet(),
+    #     file_name="magnus-blank-sheet.xlsx",
+    #     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    # )
     upload = st.file_uploader("Import sheet", type=["xlsx"], key="import_sheet")
     if st.button("Print all"):
         if upload is None:
