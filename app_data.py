@@ -136,6 +136,47 @@ def list_prescriptions(limit: int, offset: int) -> tuple[list[dict], int]:
         return services.list_prescriptions(session, limit=limit, offset=offset)
 
 
+def every_prescription() -> list[dict]:
+    """Every saved card, in the same order as the list."""
+    rows: list[dict] = []
+    offset = 0
+    total = 1
+    while offset < total:
+        batch, total = list_prescriptions(100, offset)
+        if not batch:
+            break
+        rows.extend(batch)
+        offset += len(batch)
+    return rows
+
+
+def prescriptions_for(ids: list[str]) -> list[dict]:
+    wanted = list(dict.fromkeys(ids))
+    if not wanted:
+        return []
+    found: list[dict] = []
+    with _require()() as session:
+        for prescription_id in wanted:
+            try:
+                row = services.get_prescription(session, prescription_id)
+            except services.NotFound:
+                continue
+            found.append(services.prescription_dict(row))
+    return found
+
+
+def delete_prescriptions(ids: list[str]) -> int:
+    removed = 0
+    with _require()() as session:
+        for prescription_id in dict.fromkeys(ids):
+            try:
+                services.delete_prescription(session, prescription_id)
+            except services.NotFound:
+                continue
+            removed += 1
+    return removed
+
+
 def request_print(prescription_id: str, idempotency_key: str) -> dict:
     with _require()() as session:
         job = services.create_print_job(
@@ -154,49 +195,69 @@ def card_files(entry: dict) -> tuple[str, bytes, bytes]:
     return render_bytes(entry)
 
 
-def print_markup(png: bytes, token: str) -> str:
-    """Card-only page for the browser print dialog. No shop agent and no network."""
+def print_markup(png: bytes | list[bytes], token: str) -> str:
+    """Card-only pages for the browser print dialog. One card per page."""
     import base64
 
+    pages = [png] if isinstance(png, (bytes, bytearray)) else list(png)
     safe = "".join(ch for ch in token if ch.isalnum() or ch == "-")
-    encoded = base64.b64encode(png).decode("ascii")
+    sources = ",".join(
+        '"data:image/png;base64,' + base64.b64encode(page).decode("ascii") + '"'
+        for page in pages
+    )
+    height = f"{max(len(pages), 1) * 53.98}mm"
     return f"""
-<div id="magnus-print-src" hidden data-png="data:image/png;base64,{encoded}"></div>
+<div id="magnus-print-src" hidden></div>
 <script>
 (function () {{
   var token = "{safe}";
   var key = "magnus-print";
   if (sessionStorage.getItem(key) === token) return;
   sessionStorage.setItem(key, token);
+  var sources = [{sources}];
+  if (!sources.length) return;
   var frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;left:-200mm;top:0;width:85.6mm;height:53.98mm;border:0;";
+  frame.style.cssText = "position:fixed;left:-200mm;top:0;width:85.6mm;height:{height};border:0;";
   document.body.appendChild(frame);
   var doc = frame.contentWindow.document;
   var style = doc.createElement("style");
-  style.textContent = "@page{{size:85.6mm 53.98mm;margin:0}}html,body{{margin:0;padding:0;width:85.6mm;height:53.98mm;overflow:hidden}}img{{display:block;width:85.6mm;height:53.98mm}}";
+  style.textContent = "@page{{size:85.6mm 53.98mm;margin:0}}html,body{{margin:0;padding:0}}img{{display:block;width:85.6mm;height:53.98mm;break-after:page;page-break-after:always}}img:last-child{{break-after:auto;page-break-after:auto}}";
   doc.head.appendChild(style);
-  var img = doc.createElement("img");
-  img.alt = "Warranty card";
-  img.src = document.getElementById("magnus-print-src").getAttribute("data-png");
-  doc.body.style.margin = "0";
-  doc.body.appendChild(img);
+  sources.forEach(function (src) {{
+    var img = doc.createElement("img");
+    img.alt = "Warranty card";
+    img.src = src;
+    doc.body.appendChild(img);
+  }});
   function go() {{
     setTimeout(function () {{ frame.contentWindow.focus(); frame.contentWindow.print(); }}, 0);
   }}
-  if (img.complete) go();
-  else img.addEventListener("load", go);
+  var pending = sources.length;
+  doc.querySelectorAll("img").forEach(function (img) {{
+    function done() {{
+      pending -= 1;
+      if (pending <= 0) go();
+    }}
+    if (img.complete) done();
+    else img.addEventListener("load", done);
+  }});
   frame.contentWindow.addEventListener("afterprint", function () {{ frame.remove(); }});
 }})();
 </script>
 """
 
 
-def cards_archive() -> bytes:
-    """Zip every saved card as a PDF."""
-    rows, _total = list_prescriptions(500, 0)
+def _cards(entries: list[dict] | None) -> list[dict]:
+    rows = every_prescription() if entries is None else list(entries)
     if not rows:
         raise DatabaseNotConfigured("No cards saved yet.")
+    return rows
+
+
+def cards_archive(entries: list[dict] | None = None) -> bytes:
+    """Zip of separate PDFs, one card in each file."""
+    rows = _cards(entries)
     buffer = BytesIO()
     used = set()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -206,6 +267,13 @@ def cards_archive() -> bytes:
             used.add(name)
             archive.writestr(f"{name}.pdf", pdf)
     return buffer.getvalue()
+
+
+def cards_book(entries: list[dict] | None = None) -> bytes:
+    """One PDF. Each card is its own page."""
+    from printer_agent.card_renderer import render_book
+
+    return render_book(_cards(entries))
 
 
 def export_workbook() -> bytes:

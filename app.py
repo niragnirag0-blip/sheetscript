@@ -130,7 +130,7 @@ st.markdown(
         color: #FFFFFF;
     }
     .section-label {
-        margin: 1.35rem 0 0.35rem;
+        margin: 0;
         color: #14241B;
         font-size: 1.15rem;
         font-weight: 700;
@@ -218,6 +218,26 @@ st.markdown(
 )
 
 
+def _selected_ids() -> list[str]:
+    return [
+        key.removeprefix("pick-")
+        for key, value in list(st.session_state.items())
+        if isinstance(key, str) and key.startswith("pick-") and value is True
+    ]
+
+
+def _queue_print(entries: list[dict]) -> None:
+    pngs = []
+    for entry in entries:
+        _stem, png, _pdf = app_data.card_files(entry)
+        pngs.append(png)
+    if not pngs:
+        st.warning("No cards to print.")
+        return
+    stamp = str(datetime.now().timestamp()).replace(".", "-")
+    st.session_state["browser_print"] = {"pngs": pngs, "token": f"{len(pngs)}-{stamp}"}
+
+
 database = app_data.status()
 if database["detail"]:
     st.info(database["detail"])
@@ -226,20 +246,61 @@ flash = st.session_state.pop("flash", None)
 if flash:
     st.success(flash)
 
-title_col, cards_col = st.columns([3, 1])
-title_col.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True)
-if cards_col.button("Download all PDFs", use_container_width=True):
+upload = st.file_uploader("Import sheet", type=["xlsx"], key="import_sheet")
+if st.button("Print all", key="import_sheet_print"):
+    if upload is None:
+        st.warning("Choose a sheet first.")
+    else:
+        try:
+            report = app_data.import_workbook(upload.getvalue())
+        except Exception as error:
+            st.error(str(error))
+        else:
+            st.success(f"Added {report['inserted']}. Already saved {report['skipped']}.")
+            for item in report["errors"]:
+                st.warning(f"Row {item['row']}: {item['error']}")
+            if report["inserted"]:
+                st.rerun()
+
+page_size = 8
+page = int(st.session_state.get("card_page", 0))
+try:
+    saved_rows, total_cards = app_data.list_prescriptions(page_size, page * page_size)
+except app_data.DatabaseNotConfigured:
+    saved_rows, total_cards = [], 0
+if total_cards == 0:
+    next_page = 0
+elif page * page_size >= total_cards:
+    next_page = (total_cards - 1) // page_size
+else:
+    next_page = page
+if next_page != page:
+    st.session_state["card_page"] = next_page
+    st.rerun()
+
+head = st.container(horizontal=True, vertical_alignment="center", gap="small")
+head.markdown('<p class="section-label">Saved cards</p>', unsafe_allow_html=True, width="stretch")
+if head.button("Print all", disabled=total_cards == 0, help="Open the print dialog for every card, one card per page."):
     try:
-        st.session_state["cards_zip"] = app_data.cards_archive()
+        _queue_print(app_data.every_prescription())
     except Exception as error:
         st.error(str(error))
-if st.session_state.get("cards_zip"):
-    st.download_button(
-        "Save all PDFs",
-        data=st.session_state["cards_zip"],
-        file_name="magnus-cards.zip",
-        mime="application/zip",
-    )
+head.download_button(
+    "One PDF",
+    data=app_data.cards_book,
+    file_name="magnus-cards.pdf",
+    mime="application/pdf",
+    disabled=total_cards == 0,
+    help="Download every card in one PDF. Each card is its own page.",
+)
+head.download_button(
+    "Separate PDFs",
+    data=app_data.cards_archive,
+    file_name="magnus-cards.zip",
+    mime="application/zip",
+    disabled=total_cards == 0,
+    help="Download a zip. Each card is its own PDF.",
+)
 notice = st.session_state.pop("print_notice", None)
 if notice:
     if notice.get("job_id"):
@@ -256,12 +317,70 @@ if notice:
     else:
         st.warning(f"{notice['label']} is queued. It will print when the Zebra is connected.")
 
-page_size = 8
-page = int(st.session_state.get("card_page", 0))
-try:
-    saved_rows, total_cards = app_data.list_prescriptions(page_size, page * page_size)
-except app_data.DatabaseNotConfigured:
-    saved_rows, total_cards = [], 0
+chosen = _selected_ids()
+pending_delete = list(st.session_state.get("confirm_delete") or [])
+tools = st.container(horizontal=True, vertical_alignment="center", gap="small")
+if tools.button("Select all", disabled=total_cards == 0):
+    for entry in app_data.every_prescription():
+        st.session_state[f"pick-{entry['id']}"] = True
+    st.rerun()
+if tools.button("Clear", disabled=not chosen):
+    for entry_id in chosen:
+        st.session_state[f"pick-{entry_id}"] = False
+    st.rerun()
+if tools.button("Print selected", disabled=not chosen, type="primary"):
+    try:
+        _queue_print(app_data.prescriptions_for(chosen))
+    except Exception as error:
+        st.error(str(error))
+picked_ids = list(chosen)
+
+def _selected_book() -> bytes:
+    return app_data.cards_book(app_data.prescriptions_for(picked_ids))
+
+def _selected_zip() -> bytes:
+    return app_data.cards_archive(app_data.prescriptions_for(picked_ids))
+
+tools.download_button(
+    "Selected PDF",
+    data=_selected_book,
+    file_name="magnus-selected.pdf",
+    mime="application/pdf",
+    disabled=not chosen,
+    help="Download the selected cards in one PDF, each card on its own page.",
+)
+tools.download_button(
+    "Selected zip",
+    data=_selected_zip,
+    file_name="magnus-selected.zip",
+    mime="application/zip",
+    disabled=not chosen,
+    help="Download the selected cards as separate PDFs in a zip.",
+)
+if not pending_delete and tools.button("Delete selected", disabled=not chosen):
+    st.session_state["confirm_delete"] = list(chosen)
+    st.rerun()
+count_label = "None selected" if not chosen else f"{len(chosen)} selected"
+tools.markdown(f"<p class='row-meta'>{count_label}</p>", unsafe_allow_html=True)
+if pending_delete:
+    noun = "card" if len(pending_delete) == 1 else "cards"
+    st.warning(f"Delete {len(pending_delete)} selected {noun}? They leave the saved list.")
+    confirm = st.container(horizontal=True, vertical_alignment="center", gap="small")
+    if confirm.button("Delete these cards", type="primary"):
+        try:
+            removed = app_data.delete_prescriptions(pending_delete)
+        except Exception as error:
+            st.error(str(error))
+        else:
+            for entry_id in pending_delete:
+                st.session_state.pop(f"pick-{entry_id}", None)
+            st.session_state.pop("confirm_delete", None)
+            word = "card" if removed == 1 else "cards"
+            st.session_state["flash"] = f"Deleted {removed} {word}."
+            st.rerun()
+    if confirm.button("Cancel"):
+        st.session_state.pop("confirm_delete", None)
+        st.rerun()
 
 if saved_rows:
     for entry in saved_rows:
@@ -269,6 +388,11 @@ if saved_rows:
         stem, png, pdf = app_data.card_files(entry)
         with st.container(border=True):
             with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+                st.checkbox(
+                    f"Select {entry['patient_name']}",
+                    key=f"pick-{entry_id}",
+                    label_visibility="collapsed",
+                )
                 st.markdown(
                     "<div class='card-line'>"
                     f"<p class='row-name'>{escape(entry['patient_name'])}</p>"
@@ -305,7 +429,7 @@ if saved_rows:
             )
             if actions.button("Print", key=f"print-{entry_id}", type="primary", width="content"):
                 st.session_state["browser_print"] = {
-                    "png": png,
+                    "pngs": [png],
                     "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
                 }
     previous, page_label, nxt = st.columns([1, 2, 1])
@@ -321,39 +445,17 @@ else:
 
 browser_print = st.session_state.get("browser_print")
 if browser_print:
-    st.html(
-        app_data.print_markup(browser_print["png"], browser_print["token"]),
-        unsafe_allow_javascript=True,
-    )
+    pages = browser_print.get("pngs")
+    if not pages and browser_print.get("png"):
+        pages = [browser_print["png"]]
+    if pages:
+        st.html(
+            app_data.print_markup(pages, browser_print["token"]),
+            unsafe_allow_javascript=True,
+        )
 
 
-export_col, printer_col = st.columns([1, 1], gap="large")
-with export_col:
-    # st.markdown('<p class="section-label">Sheet</p>', unsafe_allow_html=True)
-    # st.download_button(
-    #     "Blank sheet",
-    #     data=app_data.blank_sheet(),
-    #     file_name="magnus-blank-sheet.xlsx",
-    #     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    # )
-    upload = st.file_uploader("Import sheet", type=["xlsx"], key="import_sheet")
-    if st.button("Print all"):
-        if upload is None:
-            st.warning("Choose a sheet first.")
-        else:
-            try:
-                report = app_data.import_workbook(upload.getvalue())
-            except Exception as error:
-                st.error(str(error))
-            else:
-                st.success(f"Added {report['inserted']}. Already saved {report['skipped']}.")
-                for item in report["errors"]:
-                    st.warning(f"Row {item['row']}: {item['error']}")
-                if report["inserted"]:
-                    st.rerun()
-
-with printer_col:
-    with st.expander("Printer connection"):
+with st.expander("Printer connection"):
         st.write(
             "Print on a saved card opens this computer's print dialog. "
             "It works offline: pick the Zebra, paper size CR80 (85.6 × 54 mm), and actual size. "
