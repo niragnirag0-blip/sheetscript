@@ -1,6 +1,7 @@
 """Prescription form. Each entry is saved to the database. Excel is written on export."""
 
 from datetime import datetime
+from html import escape
 
 import streamlit as st
 
@@ -146,6 +147,51 @@ st.markdown(
         letter-spacing: 0.04em;
         text-transform: uppercase;
     }
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: #F7FBF8;
+        border: 1px solid #C9D9CF !important;
+        border-radius: 8px;
+        padding: 0.05rem 0.4rem 0.1rem;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdown"],
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stElementContainer"] {
+        margin: 0;
+    }
+    .row-name, .row-meta, .row-eyes {
+        margin: 0;
+        line-height: 1.15;
+    }
+    .row-name {
+        color: #14241B;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+    .row-meta, .row-eyes {
+        color: #3D5246;
+        font-size: 0.82rem;
+    }
+    .row-eyes b {
+        color: #146B3A;
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        margin: 0 0.15rem 0 0.35rem;
+    }
+    .row-eyes b:first-child {
+        margin-left: 0;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] button {
+        min-height: 1.7rem !important;
+        height: 1.7rem;
+        padding: 0 0.55rem !important;
+        font-size: 0.78rem !important;
+        border-radius: 7px;
+        white-space: nowrap;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stBaseButton-primary"] {
+        background: #12482E;
+        border: none;
+        color: #FFFFFF;
+    }
     @media (prefers-reduced-motion: reduce) {
         * { transition: none !important; }
     }
@@ -203,21 +249,24 @@ except app_data.DatabaseNotConfigured:
 if saved_rows:
     for entry in saved_rows:
         entry_id = entry["id"]
-        status = entry.get("print_status") or "not sent"
         stem, png, pdf = app_data.card_files(entry)
         with st.container(border=True):
-            who, right, left, action = st.columns([2.2, 2.0, 2.0, 1.3])
-            who.markdown(
-                f"**{entry['patient_name']}**  \n{entry['ref_no'] or '—'} · {entry['date']}  \n"
-                f"{entry['lens'] or '—'} · {entry['retailer'] or '—'}  \n{entry['created_at']}  \nPrint status: {status}"
+            name, meta, eyes, png_col, pdf_col, print_col = st.columns(
+                [2.4, 2.2, 2.0, 1.05, 1.05, 1.15],
+                gap="small",
+                vertical_alignment="center",
             )
-            right.markdown(
-                f"R  {entry['re_sph'] or '—'}  {entry['re_cyl'] or '—'}  {entry['re_axis'] or '—'}  {entry['re_add'] or '—'}"
+            name.markdown(f"<p class='row-name'>{escape(entry['patient_name'])}</p>", unsafe_allow_html=True)
+            meta.markdown(
+                f"<p class='row-meta'>{escape(entry['ref_no'] or '—')} · {escape(str(entry['date'] or '—'))}</p>",
+                unsafe_allow_html=True,
             )
-            left.markdown(
-                f"L  {entry['le_sph'] or '—'}  {entry['le_cyl'] or '—'}  {entry['le_axis'] or '—'}  {entry['le_add'] or '—'}"
+            eyes.markdown(
+                f"<p class='row-eyes'><b>R</b>{escape(entry['re_sph'] or '—')}"
+                f"<b>L</b>{escape(entry['le_sph'] or '—')}</p>",
+                unsafe_allow_html=True,
             )
-            action.download_button(
+            png_col.download_button(
                 "PNG",
                 data=png,
                 file_name=f"{stem}.png",
@@ -225,7 +274,7 @@ if saved_rows:
                 key=f"png-{entry_id}",
                 use_container_width=True,
             )
-            action.download_button(
+            pdf_col.download_button(
                 "PDF",
                 data=pdf,
                 file_name=f"{stem}.pdf",
@@ -233,7 +282,7 @@ if saved_rows:
                 key=f"pdf-{entry_id}",
                 use_container_width=True,
             )
-            if action.button("Print", key=f"print-{entry_id}", type="primary"):
+            if print_col.button("Print", key=f"print-{entry_id}", type="primary"):
                 st.session_state["browser_print"] = {
                     "png": png,
                     "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
