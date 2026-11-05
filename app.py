@@ -147,46 +147,64 @@ st.markdown(
         letter-spacing: 0.04em;
         text-transform: uppercase;
     }
-    [data-testid="stVerticalBlock"]:has(.row-name) {
-        background: #F7FBF8;
-        border-radius: 8px !important;
-        padding: 0.15rem 0.55rem !important;
+    .card-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 1.15rem;
+        row-gap: 0.15rem;
+        min-width: 0;
+        max-width: 100%;
     }
-    [data-testid="stVerticalBlock"]:has(.row-name) [data-testid="stMarkdown"],
-    [data-testid="stVerticalBlock"]:has(.row-name) [data-testid="stElementContainer"] {
+    .card-line p {
         margin: 0;
+        white-space: nowrap;
     }
     .row-name, .row-meta, .row-eyes {
         margin: 0;
-        line-height: 1.15;
+        line-height: 1.2;
     }
     .row-name {
         color: #14241B;
         font-size: 0.95rem;
         font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
     }
     .row-meta, .row-eyes {
         color: #3D5246;
         font-size: 0.82rem;
     }
+    .row-meta .dot {
+        margin: 0 0.35rem;
+        color: #8AA092;
+    }
+    .row-eyes {
+        display: inline-flex;
+        gap: 0.75rem;
+    }
     .row-eyes b {
         color: #146B3A;
         font-size: 0.68rem;
         letter-spacing: 0.06em;
-        margin: 0 0.15rem 0 0.35rem;
+        margin-right: 0.2rem;
     }
-    .row-eyes b:first-child {
-        margin-left: 0;
+    [data-testid="stLayoutWrapper"]:has(.card-line) {
+        min-width: 0;
     }
-    [data-testid="stVerticalBlock"]:has(.row-name) button {
-        min-height: 1.75rem !important;
-        height: 1.75rem !important;
-        padding: 0 0.55rem !important;
+    [data-testid="stLayoutWrapper"]:has(.card-line) [data-testid="stElementContainer"] {
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+    [data-testid="stLayoutWrapper"]:has(.card-line) button {
+        min-height: 2rem !important;
+        padding: 0.15rem 0.75rem !important;
         font-size: 0.78rem !important;
         border-radius: 7px;
         white-space: nowrap;
     }
-    [data-testid="stVerticalBlock"]:has(.row-name) [data-testid="stBaseButton-primary"] {
+    [data-testid="stLayoutWrapper"]:has(.card-line) [data-testid="stBaseButton-primary"] {
         background: #12482E;
         border: none;
         color: #FFFFFF;
@@ -250,39 +268,42 @@ if saved_rows:
         entry_id = entry["id"]
         stem, png, pdf = app_data.card_files(entry)
         with st.container(border=True):
-            name, meta, eyes, png_col, pdf_col, print_col = st.columns(
-                [2.4, 2.2, 2.0, 1.05, 1.05, 1.15],
-                gap="small",
-                vertical_alignment="center",
-                wrap=False,
-            )
-            name.markdown(f"<p class='row-name'>{escape(entry['patient_name'])}</p>", unsafe_allow_html=True)
-            meta.markdown(
-                f"<p class='row-meta'>{escape(entry['ref_no'] or '—')} · {escape(str(entry['date'] or '—'))}</p>",
-                unsafe_allow_html=True,
-            )
-            eyes.markdown(
-                f"<p class='row-eyes'><b>R</b>{escape(entry['re_sph'] or '—')}"
-                f"<b>L</b>{escape(entry['le_sph'] or '—')}</p>",
-                unsafe_allow_html=True,
-            )
-            png_col.download_button(
+            with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+                st.markdown(
+                    "<div class='card-line'>"
+                    f"<p class='row-name'>{escape(entry['patient_name'])}</p>"
+                    f"<p class='row-meta'>{escape(entry['ref_no'] or '—')}"
+                    f"<span class='dot'>·</span>{escape(str(entry['date'] or '—'))}</p>"
+                    "<p class='row-eyes'>"
+                    f"<span><b>R</b>{escape(entry['re_sph'] or '—')}</span>"
+                    f"<span><b>L</b>{escape(entry['le_sph'] or '—')}</span>"
+                    "</p></div>",
+                    unsafe_allow_html=True,
+                    width="stretch",
+                )
+                actions = st.container(
+                    horizontal=True,
+                    vertical_alignment="center",
+                    gap="xsmall",
+                    width="content",
+                )
+            actions.download_button(
                 "PNG",
                 data=png,
                 file_name=f"{stem}.png",
                 mime="image/png",
                 key=f"png-{entry_id}",
-                use_container_width=True,
+                width="content",
             )
-            pdf_col.download_button(
+            actions.download_button(
                 "PDF",
                 data=pdf,
                 file_name=f"{stem}.pdf",
                 mime="application/pdf",
                 key=f"pdf-{entry_id}",
-                use_container_width=True,
+                width="content",
             )
-            if print_col.button("Print", key=f"print-{entry_id}", type="primary", use_container_width=True):
+            if actions.button("Print", key=f"print-{entry_id}", type="primary", width="content"):
                 st.session_state["browser_print"] = {
                     "png": png,
                     "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
