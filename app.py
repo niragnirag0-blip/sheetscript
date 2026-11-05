@@ -286,7 +286,7 @@ if head.button("Print all", disabled=total_cards == 0, help="Open the print dial
     except Exception as error:
         st.error(str(error))
 head.download_button(
-    "One PDF",
+    "Download PDF",
     data=app_data.cards_book,
     file_name="magnus-cards.pdf",
     mime="application/pdf",
@@ -294,7 +294,7 @@ head.download_button(
     help="Download every card in one PDF. Each card is its own page.",
 )
 head.download_button(
-    "Separate PDFs",
+    "Download separate PDFs",
     data=app_data.cards_archive,
     file_name="magnus-cards.zip",
     mime="application/zip",
@@ -342,7 +342,7 @@ def _selected_zip() -> bytes:
     return app_data.cards_archive(app_data.prescriptions_for(picked_ids))
 
 tools.download_button(
-    "Selected PDF",
+    "Download selected PDF",
     data=_selected_book,
     file_name="magnus-selected.pdf",
     mime="application/pdf",
@@ -350,7 +350,7 @@ tools.download_button(
     help="Download the selected cards in one PDF, each card on its own page.",
 )
 tools.download_button(
-    "Selected zip",
+    "Download selected zip",
     data=_selected_zip,
     file_name="magnus-selected.zip",
     mime="application/zip",
