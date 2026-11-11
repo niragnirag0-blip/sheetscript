@@ -561,36 +561,39 @@ def render_card(card: Card, layout: dict):
                 draw.line([(x, y_top), (x, y_bot)], fill=GRID, width=table_line_width)
 
         # Middle section: Prescription numbers for Right and Left eye
-        col_sph_x = float(layout.get("col_sph_x", 272))
-        col_cyl_x = float(layout.get("col_cyl_x", 462))
-        col_axis_x = float(layout.get("col_axis_x", 640))
-        col_add_x = float(layout.get("col_add_x", 838))
+        table_align = str(layout.get("table_align", "left")).lower()
+        col_sph_x = float(layout.get("col_sph_x", 245 if table_align == "left" else 272))
+        col_cyl_x = float(layout.get("col_cyl_x", 440 if table_align == "left" else 462))
+        col_axis_x = float(layout.get("col_axis_x", 620 if table_align == "left" else 640))
+        col_add_x = float(layout.get("col_add_x", 800 if table_align == "left" else 838))
         r_y = float(layout.get("r_y", 350))
         l_y = float(layout.get("l_y", 420))
 
-        draw_centered_baseline(
+        draw_rx = draw_centered_baseline if table_align == "center" else draw_baseline
+
+        draw_rx(
             draw, card.right.get("sph", ""), col_sph_x, r_y, value_font, INK, stroke_width=stroke_width
         )
-        draw_centered_baseline(
+        draw_rx(
             draw, card.right.get("cyl", ""), col_cyl_x, r_y, value_font, INK, stroke_width=stroke_width
         )
-        draw_centered_baseline(
+        draw_rx(
             draw, card.right.get("axis", ""), col_axis_x, r_y, value_font, INK, stroke_width=stroke_width
         )
-        draw_centered_baseline(
+        draw_rx(
             draw, card.right.get("add", ""), col_add_x, r_y, value_font, INK, stroke_width=stroke_width
         )
 
-        draw_centered_baseline(
+        draw_rx(
             draw, card.left.get("sph", ""), col_sph_x, l_y, value_font, INK, stroke_width=stroke_width
         )
-        draw_centered_baseline(
+        draw_rx(
             draw, card.left.get("cyl", ""), col_cyl_x, l_y, value_font, INK, stroke_width=stroke_width
         )
-        draw_centered_baseline(
+        draw_rx(
             draw, card.left.get("axis", ""), col_axis_x, l_y, value_font, INK, stroke_width=stroke_width
         )
-        draw_centered_baseline(
+        draw_rx(
             draw, card.left.get("add", ""), col_add_x, l_y, value_font, INK, stroke_width=stroke_width
         )
 

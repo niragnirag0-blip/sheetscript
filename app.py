@@ -411,14 +411,14 @@ if saved_rows:
                     gap="xsmall",
                     width="content",
                 )
-            # actions.download_button(
-            #     "PNG",
-            #     data=png,
-            #     file_name=f"{stem}.png",
-            #     mime="image/png",
-            #     key=f"png-{entry_id}",
-            #     width="content",
-            # )
+            actions.download_button(
+                "PNG",
+                data=png,
+                file_name=f"{stem}.png",
+                mime="image/png",
+                key=f"png-{entry_id}",
+                width="content",
+            )
             actions.download_button(
                 "PDF",
                 data=pdf,
@@ -432,6 +432,8 @@ if saved_rows:
                     "pngs": [png],
                     "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
                 }
+            with st.expander("Card Preview", expanded=False):
+                st.image(png, use_container_width=True, caption=f"Print preview - {entry['patient_name']}")
     previous, page_label, nxt = st.columns([1, 2, 1])
     if previous.button("Previous", disabled=page == 0):
         st.session_state["card_page"] = page - 1
