@@ -327,17 +327,52 @@ def draw_centered(draw, text: str, box: tuple, font, fill) -> None:
     draw.text((x, y), text, font=font, fill=fill)
 
 
-def draw_fields(draw, rows: list[tuple[str, str]], x: float, baseline: float, gap: float, label_font, value_font) -> None:
+def draw_centered_baseline(draw, text: str, cx: float, baseline: float, font, fill) -> None:
+    if not text:
+        return
+    ascent, _descent = font.getmetrics()
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = bbox[2] - bbox[0]
+    draw.text((cx - width / 2 - bbox[0], baseline - ascent), text, font=font, fill=fill)
+
+
+def draw_fields(
+    draw,
+    rows: list[tuple[str, str]],
+    x: float,
+    baseline: float,
+    gap: float,
+    label_font,
+    value_font,
+    include_labels: bool = True,
+    max_value_width: float | None = None,
+) -> None:
     """Labels stay left, and the colons share one vertical line, as on the sample card."""
-    label_w = max(text_size(draw, label, label_font)[0] for label, _value in rows)
-    colon_w, _ = text_size(draw, ":", label_font)
-    colon_x = x + label_w + 16
-    value_x = colon_x + colon_w + 16
-    for label, value in rows:
-        draw_baseline(draw, label, x, baseline, label_font, LABEL)
-        draw_baseline(draw, ":", colon_x, baseline, label_font, LABEL)
-        draw_baseline(draw, value, value_x, baseline, value_font, INK)
-        baseline += gap
+    if include_labels:
+        label_w = max(text_size(draw, label, label_font)[0] for label, _value in rows)
+        colon_w, _ = text_size(draw, ":", label_font)
+        colon_x = x + label_w + 16
+        value_x = colon_x + colon_w + 16
+        for label, value in rows:
+            draw_baseline(draw, label, x, baseline, label_font, LABEL)
+            draw_baseline(draw, ":", colon_x, baseline, label_font, LABEL)
+            draw_baseline(draw, value, value_x, baseline, value_font, INK)
+            baseline += gap
+    else:
+        for _label, value in rows:
+            if value:
+                font = value_font
+                if max_value_width is not None:
+                    vw, _ = text_size(draw, value, font)
+                    if vw > max_value_width:
+                        current_size = getattr(font, "size", 28)
+                        for size in range(current_size - 2, 14, -2):
+                            smaller = load_font("sans_bold", size)
+                            if text_size(draw, value, smaller)[0] <= max_value_width:
+                                font = smaller
+                                break
+                draw_baseline(draw, value, x, baseline, font, INK)
+            baseline += gap
 
 
 def draw_logo(base, box: tuple) -> None:
@@ -434,6 +469,80 @@ def render_card(card: Card, layout: dict):
     from PIL import Image, ImageDraw
 
     width, height = cr80_pixels()
+    preprinted = bool(layout.get("preprinted", True))
+
+    label_font = load_font("sans", 28)
+    value_font_size = int(layout.get("font_size", 28))
+    value_font = load_font("sans_bold", value_font_size)
+    header_font = load_font("sans_bold", 28)
+    cell_font = load_font("sans_bold", 30)
+    side_font = load_font("sans_bold", 28)
+    verify_font = load_font("sans_bold", 20)
+
+    if preprinted:
+        # Pre-printed paper card already has borders, Magnus logo, "Date :", "Name :",
+        # "Lens :", "SPH", "CYL", "AXIS", "ADD", "R", "L", "Retailer :", "Ref No :",
+        # "Verify Authenticity @", and the QR code.
+        # Only print the values onto a clean white background.
+        image = Image.new("RGB", (width, height), WHITE)
+        draw = ImageDraw.Draw(image)
+
+        # Top section: Date, Name, Lens values
+        top_x = float(layout.get("top_x", 230))
+        date_y = float(layout.get("date_y", 72))
+        top_gap = float(layout.get("top_gap", 45.5))
+        max_top_width = float(layout.get("max_top_width", 430))
+
+        draw_fields(
+            draw,
+            (("Date", card.date), ("Name", card.name.upper()), ("Lens", card.lens.upper())),
+            top_x,
+            date_y,
+            top_gap,
+            label_font,
+            value_font,
+            include_labels=False,
+            max_value_width=max_top_width,
+        )
+
+        # Middle section: Prescription numbers for Right and Left eye
+        col_sph_x = float(layout.get("col_sph_x", 272))
+        col_cyl_x = float(layout.get("col_cyl_x", 462))
+        col_axis_x = float(layout.get("col_axis_x", 640))
+        col_add_x = float(layout.get("col_add_x", 838))
+        r_y = float(layout.get("r_y", 291))
+        l_y = float(layout.get("l_y", 359))
+
+        draw_centered_baseline(draw, card.right.get("sph", ""), col_sph_x, r_y, value_font, INK)
+        draw_centered_baseline(draw, card.right.get("cyl", ""), col_cyl_x, r_y, value_font, INK)
+        draw_centered_baseline(draw, card.right.get("axis", ""), col_axis_x, r_y, value_font, INK)
+        draw_centered_baseline(draw, card.right.get("add", ""), col_add_x, r_y, value_font, INK)
+
+        draw_centered_baseline(draw, card.left.get("sph", ""), col_sph_x, l_y, value_font, INK)
+        draw_centered_baseline(draw, card.left.get("cyl", ""), col_cyl_x, l_y, value_font, INK)
+        draw_centered_baseline(draw, card.left.get("axis", ""), col_axis_x, l_y, value_font, INK)
+        draw_centered_baseline(draw, card.left.get("add", ""), col_add_x, l_y, value_font, INK)
+
+        # Bottom section: Retailer, Ref No values
+        bot_x = float(layout.get("bot_x", 240))
+        retailer_y = float(layout.get("retailer_y", 432))
+        bot_gap = float(layout.get("bot_gap", 46))
+        max_bot_width = float(layout.get("max_bot_width", 480))
+
+        draw_fields(
+            draw,
+            (("Retailer", card.retailer.upper()), ("Ref No", card.ref)),
+            bot_x,
+            retailer_y,
+            bot_gap,
+            label_font,
+            value_font,
+            include_labels=False,
+            max_value_width=max_bot_width,
+        )
+
+        return image
+
     image = Image.new("RGB", (width, height), BORDER)
     draw = ImageDraw.Draw(image)
     frame = 26
@@ -444,13 +553,6 @@ def render_card(card: Card, layout: dict):
         fill=WHITE,
     )
 
-    label_font = load_font("sans", 28)
-    value_font = load_font("sans_bold", 30)
-    header_font = load_font("sans_bold", 28)
-    cell_font = load_font("sans_bold", 30)
-    side_font = load_font("sans_bold", 28)
-    verify_font = load_font("sans_bold", 20)
-
     left = 68
     draw_fields(
         draw,
@@ -460,6 +562,7 @@ def render_card(card: Card, layout: dict):
         46,
         label_font,
         value_font,
+        include_labels=True,
     )
 
     draw_logo(image, (620, 42, 960, 128))
@@ -507,6 +610,7 @@ def render_card(card: Card, layout: dict):
         48,
         label_font,
         value_font,
+        include_labels=True,
     )
 
     qr_size = 148

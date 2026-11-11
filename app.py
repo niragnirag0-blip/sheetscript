@@ -411,14 +411,14 @@ if saved_rows:
                     gap="xsmall",
                     width="content",
                 )
-            actions.download_button(
-                "PNG",
-                data=png,
-                file_name=f"{stem}.png",
-                mime="image/png",
-                key=f"png-{entry_id}",
-                width="content",
-            )
+            # actions.download_button(
+            #     "PNG",
+            #     data=png,
+            #     file_name=f"{stem}.png",
+            #     mime="image/png",
+            #     key=f"png-{entry_id}",
+            #     width="content",
+            # )
             actions.download_button(
                 "PDF",
                 data=pdf,
@@ -455,56 +455,56 @@ if browser_print:
         )
 
 
-with st.expander("Printer connection"):
-        st.write(
-            "Print on a saved card opens this computer's print dialog. "
-            "It works offline: pick the Zebra, paper size CR80 (85.6 × 54 mm), and actual size. "
-            "The shop agent is a separate queue. USB002 is the printer's Windows port, not an address."
-        )
-        try:
-            shop = app_data.shop_summary()
-        except app_data.DatabaseNotConfigured as error:
-            st.caption(str(error))
-            shop = None
-        if shop is not None:
-            st.write(
-                f"Prescriptions {shop['prescriptions']} · Pending {shop['pending']} · "
-                f"Sent to spooler {shop['submitted_to_spooler']} · Failed {shop['failed']} · "
-                f"Needs review {shop['requires_manual_review']}"
-            )
-            if not shop["devices"]:
-                st.caption("No shop computer has registered yet.")
-            for device in shop["devices"]:
-                seen = device["last_heartbeat_at"] or "no heartbeat yet"
-                st.write(
-                    f"{device['device_name']}: {device['status']} · {device['printer_name']} · "
-                    f"agent {device['agent_version'] or '—'} · last seen {seen}"
-                )
-            shown = st.session_state.get("new_device_token")
-            if shown:
-                st.code(shown, language=None)
-                st.caption("Copy this device token into the shop PC once. It is not shown again.")
-            with st.form("register_device"):
-                device_name = st.text_input("Shop computer name", value="Jagadamba")
-                if st.form_submit_button("Register shop PC"):
-                    try:
-                        _device, token = app_data.register_shop_pc(device_name, "Zebra ZC300 USB Card Printer")
-                    except Exception as error:
-                        st.error(str(error))
-                    else:
-                        st.session_state["new_device_token"] = token
-                        st.rerun()
-            for job in shop["recent_jobs"]:
-                st.caption(f"{job['created_at']} · {job['status']} · {job['id']}")
-                if job["status"] in {"failed", "requires_manual_review", "cancelled"}:
-                    agreed = st.checkbox("The card did not come out of the printer", key=f"confirm-{job['id']}")
-                    if st.button("Send again", key=f"requeue-{job['id']}"):
-                        if job["status"] == "requires_manual_review" and not agreed:
-                            st.error("Confirm that the card did not print before sending it again.")
-                        else:
-                            try:
-                                app_data.send_again(job["id"], agreed or job["status"] != "requires_manual_review")
-                            except Exception as error:
-                                st.error(str(error))
-                            else:
-                                st.rerun()
+# with st.expander("Printer connection"):
+#         st.write(
+#             "Print on a saved card opens this computer's print dialog. "
+#             "It works offline: pick the Zebra, paper size CR80 (85.6 × 54 mm), and actual size. "
+#             "The shop agent is a separate queue. USB002 is the printer's Windows port, not an address."
+#         )
+#         try:
+#             shop = app_data.shop_summary()
+#         except app_data.DatabaseNotConfigured as error:
+#             st.caption(str(error))
+#             shop = None
+#         if shop is not None:
+#             st.write(
+#                 f"Prescriptions {shop['prescriptions']} · Pending {shop['pending']} · "
+#                 f"Sent to spooler {shop['submitted_to_spooler']} · Failed {shop['failed']} · "
+#                 f"Needs review {shop['requires_manual_review']}"
+#             )
+#             if not shop["devices"]:
+#                 st.caption("No shop computer has registered yet.")
+#             for device in shop["devices"]:
+#                 seen = device["last_heartbeat_at"] or "no heartbeat yet"
+#                 st.write(
+#                     f"{device['device_name']}: {device['status']} · {device['printer_name']} · "
+#                     f"agent {device['agent_version'] or '—'} · last seen {seen}"
+#                 )
+#             shown = st.session_state.get("new_device_token")
+#             if shown:
+#                 st.code(shown, language=None)
+#                 st.caption("Copy this device token into the shop PC once. It is not shown again.")
+#             with st.form("register_device"):
+#                 device_name = st.text_input("Shop computer name", value="Jagadamba")
+#                 if st.form_submit_button("Register shop PC"):
+#                     try:
+#                         _device, token = app_data.register_shop_pc(device_name, "Zebra ZC300 USB Card Printer")
+#                     except Exception as error:
+#                         st.error(str(error))
+#                     else:
+#                         st.session_state["new_device_token"] = token
+#                         st.rerun()
+#             for job in shop["recent_jobs"]:
+#                 st.caption(f"{job['created_at']} · {job['status']} · {job['id']}")
+#                 if job["status"] in {"failed", "requires_manual_review", "cancelled"}:
+#                     agreed = st.checkbox("The card did not come out of the printer", key=f"confirm-{job['id']}")
+#                     if st.button("Send again", key=f"requeue-{job['id']}"):
+#                         if job["status"] == "requires_manual_review" and not agreed:
+#                             st.error("Confirm that the card did not print before sending it again.")
+#                         else:
+#                             try:
+#                                 app_data.send_again(job["id"], agreed or job["status"] != "requires_manual_review")
+#                             except Exception as error:
+#                                 st.error(str(error))
+#                             else:
+#                                 st.rerun()
