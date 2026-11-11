@@ -116,14 +116,14 @@ def test_preprinted_card_only_draws_values():
     assert image.getpixel((500, 600)) == (255, 255, 255)
 
     # Values must be drawn: check that there are ink pixels in value regions
-    # Top section
-    top_crop = image.crop((230, 50, 600, 180)).convert("L")
+    # Top section (Date, Name, Lens)
+    top_crop = image.crop((230, 90, 600, 230)).convert("L")
     assert min(top_crop.getextrema()) < 100
-    # Table values
-    table_crop = image.crop((200, 260, 700, 380)).convert("L")
+    # Table values and border
+    table_crop = image.crop((200, 260, 700, 450)).convert("L")
     assert min(table_crop.getextrema()) < 100
-    # Bottom values
-    bot_crop = image.crop((240, 410, 600, 500)).convert("L")
+    # Bottom values (Retailer, Ref No)
+    bot_crop = image.crop((240, 470, 600, 560)).convert("L")
     assert min(bot_crop.getextrema()) < 100
 
 

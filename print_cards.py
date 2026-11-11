@@ -291,8 +291,8 @@ def keyed_cards(cards: list[Card]) -> list[tuple[str, Card]]:
 
 BORDER = (18, 72, 46)
 LABEL = (20, 92, 54)
-INK = (17, 17, 17)
-GRID = (35, 35, 35)
+INK = (0, 0, 0)
+GRID = (0, 0, 0)
 BRONZE = (126, 84, 46)
 WHITE = (255, 255, 255)
 RIBBON = (232, 232, 232)
@@ -308,11 +308,24 @@ def text_size(draw, text: str, font) -> tuple[int, int]:
     return box[2] - box[0], box[3] - box[1]
 
 
-def draw_baseline(draw, text: str, x: float, baseline: float, font, fill) -> None:
+def draw_baseline(
+    draw,
+    text: str,
+    x: float,
+    baseline: float,
+    font,
+    fill,
+    stroke_width: int = 0,
+    stroke_fill=None,
+) -> None:
     if not text:
         return
     ascent, _descent = font.getmetrics()
-    draw.text((x, baseline - ascent), text, font=font, fill=fill)
+    kwargs = {"font": font, "fill": fill}
+    if stroke_width > 0:
+        kwargs["stroke_width"] = stroke_width
+        kwargs["stroke_fill"] = stroke_fill or fill
+    draw.text((x, baseline - ascent), text, **kwargs)
 
 
 def draw_centered(draw, text: str, box: tuple, font, fill) -> None:
@@ -327,13 +340,26 @@ def draw_centered(draw, text: str, box: tuple, font, fill) -> None:
     draw.text((x, y), text, font=font, fill=fill)
 
 
-def draw_centered_baseline(draw, text: str, cx: float, baseline: float, font, fill) -> None:
+def draw_centered_baseline(
+    draw,
+    text: str,
+    cx: float,
+    baseline: float,
+    font,
+    fill,
+    stroke_width: int = 0,
+    stroke_fill=None,
+) -> None:
     if not text:
         return
     ascent, _descent = font.getmetrics()
-    bbox = draw.textbbox((0, 0), text, font=font)
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
     width = bbox[2] - bbox[0]
-    draw.text((cx - width / 2 - bbox[0], baseline - ascent), text, font=font, fill=fill)
+    kwargs = {"font": font, "fill": fill}
+    if stroke_width > 0:
+        kwargs["stroke_width"] = stroke_width
+        kwargs["stroke_fill"] = stroke_fill or fill
+    draw.text((cx - width / 2 - bbox[0], baseline - ascent), text, **kwargs)
 
 
 def draw_fields(
@@ -346,6 +372,8 @@ def draw_fields(
     value_font,
     include_labels: bool = True,
     max_value_width: float | None = None,
+    y_coords: list[float] | None = None,
+    stroke_width: int = 0,
 ) -> None:
     """Labels stay left, and the colons share one vertical line, as on the sample card."""
     if include_labels:
@@ -353,13 +381,14 @@ def draw_fields(
         colon_w, _ = text_size(draw, ":", label_font)
         colon_x = x + label_w + 16
         value_x = colon_x + colon_w + 16
-        for label, value in rows:
-            draw_baseline(draw, label, x, baseline, label_font, LABEL)
-            draw_baseline(draw, ":", colon_x, baseline, label_font, LABEL)
-            draw_baseline(draw, value, value_x, baseline, value_font, INK)
-            baseline += gap
+        for index, (label, value) in enumerate(rows):
+            cur_baseline = y_coords[index] if y_coords and index < len(y_coords) else baseline + index * gap
+            draw_baseline(draw, label, x, cur_baseline, label_font, LABEL)
+            draw_baseline(draw, ":", colon_x, cur_baseline, label_font, LABEL)
+            draw_baseline(draw, value, value_x, cur_baseline, value_font, INK, stroke_width=stroke_width)
     else:
-        for _label, value in rows:
+        for index, (_label, value) in enumerate(rows):
+            cur_baseline = y_coords[index] if y_coords and index < len(y_coords) else baseline + index * gap
             if value:
                 font = value_font
                 if max_value_width is not None:
@@ -371,8 +400,7 @@ def draw_fields(
                             if text_size(draw, value, smaller)[0] <= max_value_width:
                                 font = smaller
                                 break
-                draw_baseline(draw, value, x, baseline, font, INK)
-            baseline += gap
+                draw_baseline(draw, value, x, cur_baseline, font, INK, stroke_width=stroke_width)
 
 
 def draw_logo(base, box: tuple) -> None:
@@ -480,17 +508,19 @@ def render_card(card: Card, layout: dict):
     verify_font = load_font("sans_bold", 20)
 
     if preprinted:
-        # Pre-printed paper card already has borders, Magnus logo, "Date :", "Name :",
+        # Pre-printed paper card already has outer border, Magnus logo, "Date :", "Name :",
         # "Lens :", "SPH", "CYL", "AXIS", "ADD", "R", "L", "Retailer :", "Ref No :",
         # "Verify Authenticity @", and the QR code.
-        # Only print the values onto a clean white background.
+        # Print values and optional table grid onto a clean white background.
         image = Image.new("RGB", (width, height), WHITE)
         draw = ImageDraw.Draw(image)
 
         # Top section: Date, Name, Lens values
         top_x = float(layout.get("top_x", 230))
-        date_y = float(layout.get("date_y", 72))
-        top_gap = float(layout.get("top_gap", 45.5))
+        date_y = float(layout.get("date_y", 113))
+        name_y = float(layout.get("name_y", 161))
+        lens_y = float(layout.get("lens_y", 211))
+        top_gap = float(layout.get("top_gap", 48.0))
         max_top_width = float(layout.get("max_top_width", 430))
 
         draw_fields(
@@ -503,15 +533,36 @@ def render_card(card: Card, layout: dict):
             value_font,
             include_labels=False,
             max_value_width=max_top_width,
+            y_coords=[date_y, name_y, lens_y],
         )
+
+        # Table border (grid lines) if enabled
+        if bool(layout.get("borders", True)):
+            y_top = float(layout.get("table_y_top", 268))
+            y_mid1 = float(layout.get("table_y_mid1", 318))
+            y_mid2 = float(layout.get("table_y_mid2", 378))
+            y_bot = float(layout.get("table_y_bot", 445))
+
+            x_left = float(layout.get("table_x_left", 60))
+            x_col1 = float(layout.get("table_x_col1", 170))
+            x_col2 = float(layout.get("table_x_col2", 365))
+            x_col3 = float(layout.get("table_x_col3", 550))
+            x_col4 = float(layout.get("table_x_col4", 740))
+            x_right = float(layout.get("table_x_right", 930))
+
+            for y in (y_top, y_mid1, y_mid2, y_bot):
+                draw.line([(x_left, y), (x_right, y)], fill=GRID, width=2)
+
+            for x in (x_left, x_col1, x_col2, x_col3, x_col4, x_right):
+                draw.line([(x, y_top), (x, y_bot)], fill=GRID, width=2)
 
         # Middle section: Prescription numbers for Right and Left eye
         col_sph_x = float(layout.get("col_sph_x", 272))
         col_cyl_x = float(layout.get("col_cyl_x", 462))
         col_axis_x = float(layout.get("col_axis_x", 640))
         col_add_x = float(layout.get("col_add_x", 838))
-        r_y = float(layout.get("r_y", 291))
-        l_y = float(layout.get("l_y", 359))
+        r_y = float(layout.get("r_y", 350))
+        l_y = float(layout.get("l_y", 420))
 
         draw_centered_baseline(draw, card.right.get("sph", ""), col_sph_x, r_y, value_font, INK)
         draw_centered_baseline(draw, card.right.get("cyl", ""), col_cyl_x, r_y, value_font, INK)
@@ -525,8 +576,9 @@ def render_card(card: Card, layout: dict):
 
         # Bottom section: Retailer, Ref No values
         bot_x = float(layout.get("bot_x", 240))
-        retailer_y = float(layout.get("retailer_y", 432))
-        bot_gap = float(layout.get("bot_gap", 46))
+        retailer_y = float(layout.get("retailer_y", 495))
+        ref_y = float(layout.get("ref_y", 543))
+        bot_gap = float(layout.get("bot_gap", 48.0))
         max_bot_width = float(layout.get("max_bot_width", 480))
 
         draw_fields(
@@ -539,6 +591,7 @@ def render_card(card: Card, layout: dict):
             value_font,
             include_labels=False,
             max_value_width=max_bot_width,
+            y_coords=[retailer_y, ref_y],
         )
 
         return image
