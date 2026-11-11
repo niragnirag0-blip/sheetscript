@@ -34,6 +34,15 @@ def render_bytes(prescription: dict) -> tuple[str, bytes, bytes]:
     return print_cards.safe_stem(card), png.getvalue(), pdf.getvalue()
 
 
+def render_preview_bytes(prescription: dict) -> bytes:
+    """Return PNG bytes of the full card preview for on-screen inspection."""
+    card = print_cards.card_from_entry(_entry(prescription))
+    preview = print_cards.render_preview_card(card, print_cards.load_layout())
+    buffer = BytesIO()
+    preview.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
 def render_book(prescriptions: list[dict]) -> bytes:
     """One PDF. Each card is its own page."""
     pages = []

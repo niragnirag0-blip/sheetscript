@@ -195,6 +195,12 @@ def card_files(entry: dict) -> tuple[str, bytes, bytes]:
     return render_bytes(entry)
 
 
+def card_preview(entry: dict) -> bytes:
+    from printer_agent.card_renderer import render_preview_bytes
+
+    return render_preview_bytes(entry)
+
+
 def print_markup(png: bytes | list[bytes], token: str) -> str:
     """Card-only pages for the browser print dialog. One card per page."""
     import base64

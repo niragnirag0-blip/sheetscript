@@ -432,8 +432,17 @@ if saved_rows:
                     "pngs": [png],
                     "token": f"{entry_id}-{datetime.now().timestamp()}".replace(".", "-"),
                 }
+            preview_png = app_data.card_preview(entry)
             with st.expander("Card Preview", expanded=False):
-                st.image(png, use_container_width=True, caption=f"Print preview - {entry['patient_name']}")
+                st.image(preview_png, use_container_width=True, caption=f"Full Card Preview - {entry['patient_name']}")
+                st.download_button(
+                    "Download Full Card Mockup (PNG)",
+                    data=preview_png,
+                    file_name=f"{stem}-full.png",
+                    mime="image/png",
+                    key=f"full-png-{entry_id}",
+                    use_container_width=True,
+                )
     previous, page_label, nxt = st.columns([1, 2, 1])
     if previous.button("Previous", disabled=page == 0):
         st.session_state["card_page"] = page - 1

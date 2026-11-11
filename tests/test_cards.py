@@ -171,6 +171,38 @@ def test_legacy_blank_paper_mode():
     assert min(qr_crop.getextrema()) < 100
 
 
+def test_render_preview_card_shows_full_card_details():
+    card = print_cards.card_from_entry(
+        {
+            "id": "card-full-preview",
+            "entry_date": "2026-11-11",
+            "patient_name": "Narendra Singh",
+            "lens": "1.74 Magnus",
+            "optician_name": "Jagdamba Optics",
+            "wsl_id": "J5129",
+            "re_sph": "-24.00",
+            "re_cyl": "-1.50",
+            "re_axis": "20",
+            "re_add": "",
+            "le_sph": "-8.00",
+            "le_cyl": "-5.00",
+            "le_axis": "10",
+            "le_add": "",
+        }
+    )
+    layout = print_cards.load_layout()
+    # render_preview_card must show full card details (border, logo, headers, QR, values)
+    preview = print_cards.render_preview_card(card, layout)
+    assert preview.size == (1011, 638)
+    # Border is present
+    assert preview.getpixel((0, 0)) == print_cards.BORDER
+    # Logo area has bronze ribbon / text (not plain white)
+    assert preview.getpixel((750, 80)) != (255, 255, 255)
+    # QR code is present
+    qr_crop = preview.crop((810, 455, 955, 600)).convert("L")
+    assert min(qr_crop.getextrema()) < 100
+
+
 def test_usb_port_is_not_a_network_host():
     result = print_cards.check_printer_host("USB002")
     assert result["reachable"] is False

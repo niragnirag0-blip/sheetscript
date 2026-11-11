@@ -702,6 +702,78 @@ def render_card(card: Card, layout: dict):
     return image
 
 
+def render_preview_card(card: Card, layout: dict):
+    """Render a full visual preview of the card with pre-printed stock elements and printed values."""
+    from PIL import Image, ImageChops, ImageDraw
+
+    width, height = cr80_pixels()
+
+    # 1. Base card with green-black border and rounded inner white card
+    image = Image.new("RGB", (width, height), BORDER)
+    draw = ImageDraw.Draw(image)
+    frame = 26
+    radius = 42
+    draw.rounded_rectangle(
+        (frame, frame, width - 1 - frame, height - 1 - frame),
+        radius=radius - 8,
+        fill=WHITE,
+    )
+
+    label_font = load_font("sans", 28)
+    header_font = load_font("sans_bold", 28)
+    side_font = load_font("sans_bold", 28)
+    verify_font = load_font("sans_bold", 20)
+
+    # 2. Pre-printed labels and aligned colons
+    left = 68
+    colon_x = 214
+    date_y = float(layout.get("date_y", 113))
+    name_y = float(layout.get("name_y", 161))
+    lens_y = float(layout.get("lens_y", 211))
+    for lbl, y in (("Date", date_y), ("Name", name_y), ("Lens", lens_y)):
+        draw_baseline(draw, lbl, left, y, label_font, LABEL)
+        draw_baseline(draw, ":", colon_x, y, label_font, LABEL)
+
+    retailer_y = float(layout.get("retailer_y", 495))
+    ref_y = float(layout.get("ref_y", 543))
+    for lbl, y in (("Retailer", retailer_y), ("Ref No", ref_y)):
+        draw_baseline(draw, lbl, left, y, label_font, LABEL)
+        draw_baseline(draw, ":", colon_x, y, label_font, LABEL)
+
+    # 3. Pre-printed MAGNUS logo ribbon
+    draw_logo(image, (620, 42, 960, 128))
+    draw = ImageDraw.Draw(image)
+
+    # 4. Pre-printed table headers & row markers
+    y_hdr = float(layout.get("table_y_top", 268)) + 38
+    draw_baseline(draw, "SPH", float(layout.get("col_sph_x", 245)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "CYL", float(layout.get("col_cyl_x", 440)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "AXIS", float(layout.get("col_axis_x", 620)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "ADD", float(layout.get("col_add_x", 800)), y_hdr, header_font, LABEL)
+
+    r_y = float(layout.get("r_y", 350))
+    l_y = float(layout.get("l_y", 420))
+    draw_baseline(draw, "R", 105, r_y, side_font, LABEL)
+    draw_baseline(draw, "L", 105, l_y, side_font, LABEL)
+
+    # 5. Pre-printed QR code with badge
+    qr_size = 148
+    qr_x = width - frame - 28 - qr_size
+    qr_y = 455
+    payload = qr_payload(card)
+    image.paste(make_qr(payload, qr_size), (qr_x, qr_y))
+
+    # 6. Pre-printed verify footer
+    verify = "Verify Authenticity @"
+    vw, _ = text_size(draw, verify, verify_font)
+    draw.text(((width - vw) / 2, height - frame - 36), verify, font=verify_font, fill=LABEL)
+
+    # 7. Blend the print layer (values and table grid lines) onto the card
+    print_layer = render_card(card, layout)
+    preview = ImageChops.multiply(image, print_layer)
+    return preview
+
+
 def render_print_page(card: Card, layout: dict):
     from PIL import Image
 

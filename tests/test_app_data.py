@@ -37,6 +37,7 @@ def test_page_saves_through_the_database(tmp_path, monkeypatch):
     assert job["physically_printed"] is False
     assert workbook[:2] == b"PK"
     stem, png, pdf = app_data.card_files(saved)
+    preview_png = app_data.card_preview(saved)
     archive = app_data.cards_archive()
     combined = app_data.cards_book()
     with ZipFile(BytesIO(archive)) as packed:
@@ -44,6 +45,7 @@ def test_page_saves_through_the_database(tmp_path, monkeypatch):
         pdf_bytes = packed.read(names[0])
     assert stem.startswith("J4429")
     assert png.startswith(b"\x89PNG")
+    assert preview_png.startswith(b"\x89PNG")
     assert pdf.startswith(b"%PDF")
     assert combined.startswith(b"%PDF")
     assert archive[:2] == b"PK"
