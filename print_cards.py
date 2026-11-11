@@ -512,6 +512,9 @@ def render_card(card: Card, layout: dict):
         # "Lens :", "SPH", "CYL", "AXIS", "ADD", "R", "L", "Retailer :", "Ref No :",
         # "Verify Authenticity @", and the QR code.
         # Print values and optional table grid onto a clean white background.
+        stroke_width = int(layout.get("stroke_width", 1))
+        table_line_width = int(layout.get("table_line_width", 3))
+
         image = Image.new("RGB", (width, height), WHITE)
         draw = ImageDraw.Draw(image)
 
@@ -534,6 +537,7 @@ def render_card(card: Card, layout: dict):
             include_labels=False,
             max_value_width=max_top_width,
             y_coords=[date_y, name_y, lens_y],
+            stroke_width=stroke_width,
         )
 
         # Table border (grid lines) if enabled
@@ -551,10 +555,10 @@ def render_card(card: Card, layout: dict):
             x_right = float(layout.get("table_x_right", 930))
 
             for y in (y_top, y_mid1, y_mid2, y_bot):
-                draw.line([(x_left, y), (x_right, y)], fill=GRID, width=2)
+                draw.line([(x_left, y), (x_right, y)], fill=GRID, width=table_line_width)
 
             for x in (x_left, x_col1, x_col2, x_col3, x_col4, x_right):
-                draw.line([(x, y_top), (x, y_bot)], fill=GRID, width=2)
+                draw.line([(x, y_top), (x, y_bot)], fill=GRID, width=table_line_width)
 
         # Middle section: Prescription numbers for Right and Left eye
         col_sph_x = float(layout.get("col_sph_x", 272))
@@ -564,15 +568,31 @@ def render_card(card: Card, layout: dict):
         r_y = float(layout.get("r_y", 350))
         l_y = float(layout.get("l_y", 420))
 
-        draw_centered_baseline(draw, card.right.get("sph", ""), col_sph_x, r_y, value_font, INK)
-        draw_centered_baseline(draw, card.right.get("cyl", ""), col_cyl_x, r_y, value_font, INK)
-        draw_centered_baseline(draw, card.right.get("axis", ""), col_axis_x, r_y, value_font, INK)
-        draw_centered_baseline(draw, card.right.get("add", ""), col_add_x, r_y, value_font, INK)
+        draw_centered_baseline(
+            draw, card.right.get("sph", ""), col_sph_x, r_y, value_font, INK, stroke_width=stroke_width
+        )
+        draw_centered_baseline(
+            draw, card.right.get("cyl", ""), col_cyl_x, r_y, value_font, INK, stroke_width=stroke_width
+        )
+        draw_centered_baseline(
+            draw, card.right.get("axis", ""), col_axis_x, r_y, value_font, INK, stroke_width=stroke_width
+        )
+        draw_centered_baseline(
+            draw, card.right.get("add", ""), col_add_x, r_y, value_font, INK, stroke_width=stroke_width
+        )
 
-        draw_centered_baseline(draw, card.left.get("sph", ""), col_sph_x, l_y, value_font, INK)
-        draw_centered_baseline(draw, card.left.get("cyl", ""), col_cyl_x, l_y, value_font, INK)
-        draw_centered_baseline(draw, card.left.get("axis", ""), col_axis_x, l_y, value_font, INK)
-        draw_centered_baseline(draw, card.left.get("add", ""), col_add_x, l_y, value_font, INK)
+        draw_centered_baseline(
+            draw, card.left.get("sph", ""), col_sph_x, l_y, value_font, INK, stroke_width=stroke_width
+        )
+        draw_centered_baseline(
+            draw, card.left.get("cyl", ""), col_cyl_x, l_y, value_font, INK, stroke_width=stroke_width
+        )
+        draw_centered_baseline(
+            draw, card.left.get("axis", ""), col_axis_x, l_y, value_font, INK, stroke_width=stroke_width
+        )
+        draw_centered_baseline(
+            draw, card.left.get("add", ""), col_add_x, l_y, value_font, INK, stroke_width=stroke_width
+        )
 
         # Bottom section: Retailer, Ref No values
         bot_x = float(layout.get("bot_x", 240))
@@ -592,6 +612,7 @@ def render_card(card: Card, layout: dict):
             include_labels=False,
             max_value_width=max_bot_width,
             y_coords=[retailer_y, ref_y],
+            stroke_width=stroke_width,
         )
 
         return image
