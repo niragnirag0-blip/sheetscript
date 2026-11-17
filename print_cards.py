@@ -552,7 +552,7 @@ def render_card(card: Card, layout: dict):
             x_col2 = float(layout.get("table_x_col2", 398))
             x_col3 = float(layout.get("table_x_col3", 583))
             x_col4 = float(layout.get("table_x_col4", 773))
-            x_right = float(layout.get("table_x_right", 963))
+            x_right = float(layout.get("table_x_right", 890))
 
             for y in (y_top, y_mid1, y_mid2, y_bot):
                 draw.line([(x_left, y), (x_right, y)], fill=GRID, width=table_line_width)
