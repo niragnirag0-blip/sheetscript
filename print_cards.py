@@ -547,12 +547,12 @@ def render_card(card: Card, layout: dict):
             y_mid2 = float(layout.get("table_y_mid2", 378))
             y_bot = float(layout.get("table_y_bot", 445))
 
-            x_left = float(layout.get("table_x_left", 60))
-            x_col1 = float(layout.get("table_x_col1", 170))
-            x_col2 = float(layout.get("table_x_col2", 365))
-            x_col3 = float(layout.get("table_x_col3", 550))
-            x_col4 = float(layout.get("table_x_col4", 740))
-            x_right = float(layout.get("table_x_right", 930))
+            x_left = float(layout.get("table_x_left", 93))
+            x_col1 = float(layout.get("table_x_col1", 203))
+            x_col2 = float(layout.get("table_x_col2", 398))
+            x_col3 = float(layout.get("table_x_col3", 583))
+            x_col4 = float(layout.get("table_x_col4", 773))
+            x_right = float(layout.get("table_x_right", 963))
 
             for y in (y_top, y_mid1, y_mid2, y_bot):
                 draw.line([(x_left, y), (x_right, y)], fill=GRID, width=table_line_width)
@@ -562,10 +562,10 @@ def render_card(card: Card, layout: dict):
 
         # Middle section: Prescription numbers for Right and Left eye
         table_align = str(layout.get("table_align", "left")).lower()
-        col_sph_x = float(layout.get("col_sph_x", 245 if table_align == "left" else 272))
-        col_cyl_x = float(layout.get("col_cyl_x", 440 if table_align == "left" else 462))
-        col_axis_x = float(layout.get("col_axis_x", 620 if table_align == "left" else 640))
-        col_add_x = float(layout.get("col_add_x", 800 if table_align == "left" else 838))
+        col_sph_x = float(layout.get("col_sph_x", 278 if table_align == "left" else 305))
+        col_cyl_x = float(layout.get("col_cyl_x", 473 if table_align == "left" else 495))
+        col_axis_x = float(layout.get("col_axis_x", 653 if table_align == "left" else 673))
+        col_add_x = float(layout.get("col_add_x", 833 if table_align == "left" else 871))
         r_y = float(layout.get("r_y", 350))
         l_y = float(layout.get("l_y", 420))
 
@@ -746,15 +746,16 @@ def render_preview_card(card: Card, layout: dict):
 
     # 4. Pre-printed table headers & row markers
     y_hdr = float(layout.get("table_y_top", 268)) + 38
-    draw_baseline(draw, "SPH", float(layout.get("col_sph_x", 245)), y_hdr, header_font, LABEL)
-    draw_baseline(draw, "CYL", float(layout.get("col_cyl_x", 440)), y_hdr, header_font, LABEL)
-    draw_baseline(draw, "AXIS", float(layout.get("col_axis_x", 620)), y_hdr, header_font, LABEL)
-    draw_baseline(draw, "ADD", float(layout.get("col_add_x", 800)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "SPH", float(layout.get("col_sph_x", 278)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "CYL", float(layout.get("col_cyl_x", 473)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "AXIS", float(layout.get("col_axis_x", 653)), y_hdr, header_font, LABEL)
+    draw_baseline(draw, "ADD", float(layout.get("col_add_x", 833)), y_hdr, header_font, LABEL)
 
     r_y = float(layout.get("r_y", 350))
     l_y = float(layout.get("l_y", 420))
-    draw_baseline(draw, "R", 105, r_y, side_font, LABEL)
-    draw_baseline(draw, "L", 105, l_y, side_font, LABEL)
+    rl_cx = (float(layout.get("table_x_left", 93)) + float(layout.get("table_x_col1", 203))) / 2
+    draw_centered_baseline(draw, "R", rl_cx, r_y, side_font, LABEL)
+    draw_centered_baseline(draw, "L", rl_cx, l_y, side_font, LABEL)
 
     # 5. Pre-printed QR code with badge
     qr_size = 148

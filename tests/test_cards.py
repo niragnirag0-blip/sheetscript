@@ -127,17 +127,19 @@ def test_preprinted_card_only_draws_values():
     assert min(bot_crop.getextrema()) < 100
 
     # Table grid lines are drawn when borders is True
-    # Vertical grid line between col1 and col2 at x=365
-    assert image.getpixel((365, 300)) == print_cards.GRID
-    # Horizontal grid line between header and R row at y=318
-    assert image.getpixel((200, 318)) == print_cards.GRID
+    # Vertical grid line between col1 and col2 at table_x_col2
+    grid_col2_x = int(layout.get("table_x_col2", 398))
+    grid_mid1_y = int(layout.get("table_y_mid1", 318))
+    assert image.getpixel((grid_col2_x, 300)) == print_cards.GRID
+    # Horizontal grid line between header and R row at y_mid1
+    assert image.getpixel((grid_col2_x, grid_mid1_y)) == print_cards.GRID
 
     # When borders is False, grid lines are omitted
     layout_no_borders = dict(layout)
     layout_no_borders["borders"] = False
     img_no_borders = print_cards.render_card(card, layout_no_borders)
-    assert img_no_borders.getpixel((365, 300)) == (255, 255, 255)
-    assert img_no_borders.getpixel((200, 318)) == (255, 255, 255)
+    assert img_no_borders.getpixel((grid_col2_x, 300)) == (255, 255, 255)
+    assert img_no_borders.getpixel((grid_col2_x, grid_mid1_y)) == (255, 255, 255)
 
 
 def test_legacy_blank_paper_mode():
