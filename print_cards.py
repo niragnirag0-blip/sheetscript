@@ -599,8 +599,8 @@ def render_card(card: Card, layout: dict):
 
         # Bottom section: Retailer, Ref No values
         bot_x = float(layout.get("bot_x", 240))
-        retailer_y = float(layout.get("retailer_y", 495))
-        ref_y = float(layout.get("ref_y", 543))
+        retailer_y = float(layout.get("retailer_y", 503))
+        ref_y = float(layout.get("ref_y", 551))
         bot_gap = float(layout.get("bot_gap", 48.0))
         max_bot_width = float(layout.get("max_bot_width", 480))
 
@@ -734,8 +734,8 @@ def render_preview_card(card: Card, layout: dict):
         draw_baseline(draw, lbl, left, y, label_font, LABEL)
         draw_baseline(draw, ":", colon_x, y, label_font, LABEL)
 
-    retailer_y = float(layout.get("retailer_y", 495))
-    ref_y = float(layout.get("ref_y", 543))
+    retailer_y = float(layout.get("retailer_y", 503))
+    ref_y = float(layout.get("ref_y", 551))
     for lbl, y in (("Retailer", retailer_y), ("Ref No", ref_y)):
         draw_baseline(draw, lbl, left, y, label_font, LABEL)
         draw_baseline(draw, ":", colon_x, y, label_font, LABEL)
